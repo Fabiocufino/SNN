@@ -1,0 +1,31 @@
+VERSIONE 2 -----------------------------------------------------
+---------------------------------------------------------------
+
+- Distanze dei layer variabili come la versione 1, ma abbiamo effettuato un cambio di coordinate in modo da effettuare anche un cambio di struttura.
+In dettaglio 
+	- Da x_hit -> r_hit
+	- Da y_hit -> phi_hit, ma come? Abbiamo generato delle tracce che partono dall'origine, cioè il centro del fascio. Da queste abbiamo calcolato la curvatura di queste tracce e abbiamo intersecato quest' ultima con i cerchi concentrici del rivelatore. Abbiamo usato l'algoritmo di bisezione per ottenere una stima numerica. 
+
+
+
+RISULTATI -----------------------------------------------------
+
+- plot traccia
+- conversione tempi 
+
+PROBLEMI -----------------------------------------------------
+
+- le traccie curvano molto perchè il cmapo magnetico è stato cambiato da 1 a 3.8 T e abbiamo mantenuto invariato il momento.
+
+
+
+DOMANDE -----------------------------------------------------
+
+- In che unità di misura è il momento?
+
+
+
+ONGOING -----------------------------------------------------
+
+- scrittura e lettura file root
+- confronto con la versione uno
