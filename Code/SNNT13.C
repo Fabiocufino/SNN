@@ -4,14 +4,15 @@
 #include "TStyle.h"
 #include "TCanvas.h"
 #include "TFile.h" 
+#include "TTree.h"
 #include "TROOT.h"
 #include "TMath.h"
-#include <math.h>
 #include "TRandom.h"
 #include "TRandom3.h"
 #include "Riostream.h"
 #include "Snnt_constants.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <iostream>
 #include <sstream>
@@ -22,16 +23,12 @@ using namespace std;
 
 // Constants and data used throughout the code
 // -------------------------------------------
-static double Occupancy;                       // Probability of random hit firing
-static int N_part;                             // Number of generated particles in an event
-static int KindOfSignal;                       // 0 for normal single particle configs; 1 for V (+- pair); 2 for kinks (to be implemented)
-static int StartLayer;                         // Layer when first hit occurs (=0 for single particles, >=0 for V particles)
-static double pvalues[MaxClasses];             // Particle momentum for each class
-static double betavalues[MaxClasses];           // Phi angle (atan(x/y)) for class
-static int charge[MaxClasses];                 // Electric charge
-//static int hit[N_TrackingLayers][MaxStrips];   // Strip code - not bool, as we want to separate S from N hits for plotting purposes
+static double Occupancy;                                 // Probability of random hit firing
+static int N_part;                                       // Number of generated particles in an event
+static int KindOfSignal;                                 // 0 for normal single particle configs; 1 for V (+- pair); 2 for kinks (to be implemented)
+static int StartLayer;                                   // Layer when first hit occurs (=0 for single particles, >=0 for V particles)
 static double strip_phi[MaxStrips];               
-static double Strip_first;
+static double First_angle;
 static double Eff[MaxNeurons*MaxClasses];                // Efficiency of each neuron to signals of different classes
 static double Efftot[MaxClasses];                        // Global efficiency to a different class
 static double Weight[MaxNeurons][MaxStreams];            // Weight of synapse-neuron strength
@@ -56,14 +53,14 @@ static int NevPerEpoch;
 static double ConnectedFraction;
 static vector<double> PreSpike_Time;
 static vector<int> PreSpike_Stream;
-static vector<int> PreSpike_Signal;         // 0 for background hit, 1 for signal hit, 2 for L1 neuron spike
-static double tmax;                         // t of max value for EPSP
-static double Pmax_EPSP;                    // maximum EPSP spike height
-static double K;                            // constant computed such that it sets the max of excitation spike at 1V
-static bool update9;                        // controls whether to optimize 7 network parameters
-static bool updateDelays;                   // controls whether to optimize neuron delays
-static bool updateConnections;              // controls whether to optimize connections between streams and neurons
-static bool anyHits            = true;      // Whether to accept tracks with any number of hits <8 or not
+static vector<int> PreSpike_Signal;                      // 0 for background hit, 1 for signal hit, 2 for L1 neuron spike
+static double tmax;                                      // t of max value for EPSP
+static double Pmax_EPSP;                                 // maximum EPSP spike height
+static double K;                                         // constant computed such that it sets the max of excitation spike at 1V
+static bool update9;                                     // controls whether to optimize 7 network parameters
+static bool updateDelays;                                // controls whether to optimize neuron delays
+static bool updateConnections;                           // controls whether to optimize connections between streams and neurons
+static bool anyHits            = true;                   // Whether to accept tracks with any number of hits <8 or not
 static double Q_best;
 static double SelL1_best;
 static double Eff_best;
@@ -79,12 +76,7 @@ static double IEPC_best;
 static double IPSPdf_best;
 static int indfile;
 static char progress[53]      = "[--10%--20%--30%--40%--50%--60%--70%--80%--90%-100%]"; // Progress bar
-static bool learnDelays = false;
-static ofstream fout("plot.txt");
-
-static vector<vector<double>> hit_pos;
-
-
+     
 
 // Sorting vector by column
 bool sortcol(const vector<double>& v1, const vector<double>& v2)
@@ -93,25 +85,25 @@ bool sortcol(const vector<double>& v1, const vector<double>& v2)
 	return v1[id_col] < v2[id_col];
 }
 
-
 // New random number generator
 // ---------------------------
 static TRandom3 * myRNG = new TRandom3(23);
 
-double getP(int ic){
-    if (ic == 0 || ic == 1)
+
+double getP(){
+    if (pclass == 0 || pclass == 1)
         return 3.;
-    if (ic == 2 || ic == 3)
+    if (pclass == 2 || pclass == 3)
         return 10.;
     return 1.;
 }
 
-double getBeta(int ic){
+double getBeta(){
     return  myRNG->Uniform(M_PI) + M_PI/2;
 }
 
-double getCharge(int ic){
-    return pow(-1.,ic%2);
+double getCharge(){
+    return pow(-1.,pclass%2);
 }
 
 
@@ -134,16 +126,12 @@ double bisection(double a, double b, double s, double r, double xc, double yc, d
     return c;
 }
 
-
-
-int mm;
-
 // Define tracker geometry
+// ---------------------------
 void Define_tracker () {
     for (int is=0; is<N_strips; is++) {
         strip_phi[is] = pitch_rad*is;
     }
-
 }
 
 // Function that reads parameters from file
@@ -156,7 +144,7 @@ int Read_Parameters () {
     do {
         if (indfile>-1) tmpfile.close();
         indfile++;
-        std::stringstream tmpstring;
+        stringstream tmpstring;
         tmpstring << "Params13_NL0=" << N_neuronsL[0] << "_NL1=" << N_neuronsL[1] << "_NCl=" << N_classes << "_" << indfile;
         string tmpfilename = Path + tmpstring.str() + ".txt";
         tmpfile.open(tmpfilename);
@@ -167,7 +155,7 @@ int Read_Parameters () {
         return -1;
     }
     ifstream parfile;
-    std::stringstream sstr;
+    stringstream sstr;
     char num[40];
     sprintf (num, "NL0=%d_NL1=%d_NCl=%d_%d", N_neuronsL[0], N_neuronsL[1], N_classes, indfile-1); // we'll pick the last one in the list
     sstr << "Params13_";
@@ -226,14 +214,14 @@ void Write_Parameters () {
     do {
         if (indfile>-1) tmpfile.close();
         indfile++;
-        std::stringstream tmpstring;
+        stringstream tmpstring;
         tmpstring << "Params13_NL0=" << N_neuronsL[0] << "_NL1=" << N_neuronsL[1] << "_NCl=" << N_classes << "_" << indfile;
         string tmpfilename = Path + tmpstring.str() + ".txt";
         tmpfile.open(tmpfilename);
     } while (tmpfile.is_open());
 
     ofstream parfile;
-    std::stringstream sstr;
+    stringstream sstr;
     char num[40];
     sprintf (num,"NL0=%d_NL1=%d_NCl=%d_%d", N_neuronsL[0], N_neuronsL[1], N_classes, indfile);
     sstr << "Params13_";
@@ -283,7 +271,7 @@ void Write_Parameters () {
         parfile << "False" << endl;
     }
     parfile << "                  Max mod. factor: " << MaxFactor << endl;
-    parfile << "                Only 8-hit tracks: ";
+    parfile << "                  Only " << N_TrackingLayers << "-hit tracks: ";
     if (!anyHits) {
         parfile << "True" << endl;
     } else {
@@ -366,8 +354,8 @@ void Init_connection_map() {
     }
     return;
 }
-//DOUBT: qui mi pare non si vadano ad eliminare di default le connessioni tra il layer i input e L1
-//dalla costruzione della funzione per inizializzare i pesi infatti mi pare che tale connessioe sussista
+//DOUBT: Here, it seems that the connections between the input layer and L1 are not removed by default.
+//From the construction of the weight initialization function, it appears that such connection exists.
 
 // Reset hits
 // ----------
@@ -381,7 +369,7 @@ void Reset_hits () {
 void Simulate_bgrhits (double bgr_rate) {
     for (int itl=0; itl<N_TrackingLayers; itl++) {
         for (int is=0; is<N_strips; is++) {
-            if (myRNG->Uniform()<bgr_rate){
+            if (myRNG->Uniform()<bgr_rate){ 
                 double r = strip_r[itl];
                 double phi = strip_phi[is];
                 vector<double> bkg = {r, phi, 1.};
@@ -398,93 +386,68 @@ void Simulate_bgrhits (double bgr_rate) {
 // - multi-strip clustering
 // - angle of incidence of track in silicon layer
 // - electronic noise
-// At present all particles create a hit in the closest strip they hit, with 100% efficiency
 // -----------------------------------------------------------------------------------------------------------------------
-int Simulate_sighits (int pclass) {
-    // We first compute xc, yc given x0, y0, p, beta, charge
+int Simulate_sighits () {
+    // We first compute xc, yc, p, beta, charge
     // p is momentum, in GeV/c
     // beta is azimuthal angle from x axis
-    // y0 is intercept on first layer
-    // x0 is 0 unless KindOfSignal=1 (when it is StartLayer*width, as we simulate V particles generated in StartLayer)
+
     int Nhits    = 0;
     StartLayer   = 0;
-    //DOUBT: first three layers?
-    if (KindOfSignal>0) StartLayer = KindOfSignal*myRNG->Uniform(3.-epsilon); // Only simulate V-particles generated in first four layers
-    /*
-    double r0    = strip_r[StartLayer]; // position vertex of track pairs on third layer if KoS=1
-    double phi0 = myRNG->Uniform(2.*M_PI);
-    int is0 = phi0/pitch_rad;
-    Nhits = 1;
-    hit[0][is0] = 2;
-    */ 
     
-    double p     = pvalues[pclass]; 
-    double beta   = getBeta(pclass); 
-    double ch    = charge[pclass];
-    double R     = p*abs(ch)/(0.3*Bfield)*100.;  // we transfer particle charge to sign of radius (in cm)
+    //TODO implement V particles
+    if (KindOfSignal>0) StartLayer = KindOfSignal*myRNG->Uniform(3.-epsilon); // Only simulate V-particles generated in first four layers
+  
+    double p     = getP(); 
+    double beta  = getBeta(); 
+    double ch    = getCharge();
+    double R     = p*abs(ch)/(0.3*Bfield)*100.;  //(in cm)
+    
+    double min_angle = max_angle; 
 
+    //We compute the particle's ideal orbit: a circumference passing through the origin.
+    //To determine the intersection between layers and the circumference, we employed the numerical bisection method.
+    //For the first layer, we conducted the bisection within an angular interval centered around phi_orthogonal, defined as follows:
 
-    // Now we can compute the position y at each layer given layer x
-    double ismin    = 2*M_PI; // DOUBT
     double phi_ort;
     if(ch<0) 
         phi_ort = beta + (M_PI/2.);
     else
         phi_ort = beta + 3*(M_PI/2.);
-    //cout << endl;
+    
     for (int itl=StartLayer; itl<N_TrackingLayers; itl++) { 
         double r_hit  = strip_r[itl];
-        
-
         for (int ich=0; ich<N_part; ich++) { 
             //TODO  modify to include V-particles
+            /*
             if (ich>0 && (KindOfSignal==1 || myRNG->Uniform()>0.5)) { // V-particles are +- pairs (of same momentum and beta, for now)
                 ch = -ch;
                 R  = -R;                
             }
-            double yc = R*sin(beta); // x0 is 0 for KindOfSignal=0, =StartLayer*width for KindOfSignal=1
+            */
+            
+            //computing center position
+            double yc = R*sin(beta);
             double xc = R*cos(beta);
 
-            //double insqrt = R*R-pow(x_hit-xc,2);
-            //if (insqrt>=0.) {
-            //double y_hit = yc - ch*sqrt(insqrt); // minus sign as a positive R implies center at x>0
+            double phi_hit = bisection(phi_ort - bisection_window,phi_ort + bisection_window, bisection_precision, r_hit, xc, yc, R);
 
-            double phi_hit = bisection(phi_ort - (M_PI/5),phi_ort + (M_PI/5), pitch_rad/3, r_hit, xc, yc, R);
-            //cout << "phi_ort_min" << phi_ort - (M_PI/4) << "phi_ort_max" << phi_ort + (M_PI/4) << "phi_ort" << phi_ort<< endl;
             
             if(phi_hit<0) phi_hit += 2*M_PI;
             else if (phi_hit > 2 * M_PI) phi_hit -= 2*M_PI;
 
-            if(phi_hit < ismin)
-                ismin = phi_hit;
+            if(phi_hit < min_angle)
+                min_angle = phi_hit;
+            
+            //updating the searching window for the next layer
             phi_ort = phi_hit;
 
             vector<double> sgn = {r_hit, phi_hit, 2.};
             hit_pos.push_back(sgn);
             Nhits++;
-/*
-            int is = phi_hit/pitch_rad;
-            if (is>=0 && is<N_strips) {
-                Nhits++;
-                hit[itl][is] = 2; // true;
-                if (is<ismin) ismin = is;
-            }
-            else {
-                // dump whole situation
-                cout << "Bad track: KoS=" << KindOfSignal << " pclass=" << pclass << " StartLayer=" << StartLayer << " p=" << p << " beta=" << beta << endl;
-                cout << "Itl = " << itl << " rhit=" << r_hit
-                     << " R=" << R << " xc,yc=" << xc << "," << yc << endl;
-            }
-
-*/
-
-            fout << r_hit*cos(phi_hit) << " " <<  r_hit*sin(phi_hit) << " " << xc << " " << yc << " " << R << " "  << endl;
         }
-
-
     }
-    fout << endl;
-    Strip_first = ismin;
+    First_angle = min_angle;
     return Nhits;
 }
 
@@ -497,10 +460,10 @@ int GetITL(double r_hit){
 }
 
 void Encode (double t_in) { 
-    sort(hit_pos.begin(), hit_pos.end(), sortcol); //sort hit_pos in base a phi
+    sort(hit_pos.begin(), hit_pos.end(), sortcol); //sort hit_pos by phi
     for (auto &&row : hit_pos)
     {
-        double time = t_in + row[1]*TimeStep*100.;
+        double time = t_in + row[1]/omega;
         int itl = GetITL(row[0]);
         
         PreSpike_Time.push_back(time);
@@ -508,11 +471,6 @@ void Encode (double t_in) {
         PreSpike_Signal.push_back(row[2]-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
     }
 }
-
-//segnale{r, phi, flag}
-//ordinare per phi e per r
-//
-
 // Model Excitatory Post-Synaptic Potential
 // We take this as parametrized in T. Masquelier et al., "Competitive STDP-Based Spike Pattern Learning", DOI: 10.1162/neco.2008.06-08-804
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -688,7 +646,7 @@ double Neuron_firetime (int in, double t) {
                         P += IE_potential(delta_t, in, History_ID[in][ih]);
                 }
             }
-            this_t += TimeStep/10.;
+            this_t += 1/(10000.*omega);
         } while (P<Threshold[ilayer] && this_t<=t+tmax);
         if (P>=Threshold[ilayer]) return this_t;
     }   
@@ -819,10 +777,136 @@ double Compute_Q (double eff, double acc, double sel) {
     return Q0 + w * sel;
 }
 
+//TODO: optimize
+void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double occ = 0.000390625) {
+    N_classes = classes;
+    Occupancy = occ;
+    Define_tracker ();
+    
+    cout << "Create file" << endl;
+    TFile* file = TFile::Open(nomeFile, "RECREATE");
+    if (!file || file->IsZombie()) {
+        cerr << "Errore nell'apertura o creazione del file ROOT." << endl;
+        return;
+    }
+
+    cout << "Create variables" << endl;
+
+    //Creating variables
+    double r, phi, id;
+    long int id_event;
+
+    cout << "Create tree" << endl;
+    TTree *tree = new TTree("tree", "HitsTree");
+
+    //Arrange the variables as pointers to branches of the tree 
+    tree->Branch("r", &r);
+    tree->Branch("phi", &phi);
+    tree->Branch("id", &id);
+    tree->Branch("id_event", &id_event);
+    tree->Branch("pclass", &pclass);
+
+
+    cout << "Generate events" << endl;
+
+    for(id_event = 0; id_event<nev; id_event++){
+        // Hit generation
+        // --------------
+        N_part     = 0;
+        pclass = 0;
+        int Nhits  = 0;            
+        // Reset detector hits
+        Reset_hits ();
+        bool signal = false;
+        if (myRNG->Uniform()>0.5) signal = true;
+        if (signal) { // This is an event with signal in it (50%)
+            N_part = 1; // + myRNG->Uniform(2.-epsilon); 
+            KindOfSignal = 0; // turn off v-particles generation // myRNG->Uniform(2.-epsilon); 
+            if (KindOfSignal>0) N_part = 2; 
+            do {                
+                // Reset detector hits if not first pass
+                if (Nhits>0) Reset_hits ();
+                First_angle = max_angle; // static that indicates leftmost strip hit by particle (or pair). Assigned in Simulate_sighits
+                pclass = (int)myRNG->Uniform((double)N_classes-epsilon);                
+                // Simulate hits from particle track
+                Nhits = Simulate_sighits ();     
+            } while ((!anyHits && Nhits<N_TrackingLayers) || Nhits<N_TrackingLayers); 
+        }
+
+        // Simulate background hits
+        double bgr_rate = Occupancy;
+        if (!signal) {
+            Simulate_bgrhits (bgr_rate);
+        } else {
+            Simulate_bgrhits (bgr_rate+1./N_strips); // Make the occupancy identical in events with and without tracks
+        }
+
+        //Filling the TTree
+        for (long int i = 0; i < hit_pos.size(); i++) {
+            r = hit_pos[i][0];
+            phi = hit_pos[i][1];
+            id = hit_pos[i][2];
+            tree->Fill();
+        }
+    }
+    tree->Write(); 
+    file->Close();
+}
+
+//TODO: optimize
+void ReadRootFileFromText(const char* fileInput, long int id_event_value){
+    // Open the ROOT file
+    hit_pos.clear();
+    int countPart = 0;
+    TFile *file = TFile::Open(fileInput, "READ");
+    if (!file || file->IsZombie()) {
+        cerr << "Error opening file!" << endl;
+    }
+
+    // Get the TTree
+    TTree *tree = dynamic_cast<TTree*>(file->Get("tree"));
+    if (!tree) {
+        cerr << "Error getting TTree!" << endl;
+        file->Close();
+    }
+
+    // Attach the branches to variables
+    double r;
+    double phi;
+    double id;
+    long int id_event;
+
+    tree->SetBranchAddress("r", &r);
+    tree->SetBranchAddress("phi", &phi);
+    tree->SetBranchAddress("id", &id);
+    tree->SetBranchAddress("id_event", &id_event);
+    tree->SetBranchAddress("pclass", &pclass);
+
+ 
+    // Loop over entries and find rows with the specified id_event value
+    for (long int i = last_row_event; i < tree->GetEntries(); ++i) {
+        tree->GetEntry(i);
+        if (id_event!=id_event_value) {
+            last_row_event = i;
+            break;
+        }
+        if(static_cast<int>(id)==2){
+            countPart++;
+        }
+        vector<double> tmp = {r, phi, id};
+        hit_pos.push_back(tmp);
+    }
+    N_part =countPart/N_TrackingLayers;
+
+    // Close the ROOT file
+    file->Close();
+}
+
+
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
 // ------------
-void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1., double Occ=0.00390625, 
+void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, const char* rootInput = nullptr, double CF = 1., double Occ=0.000390625, 
                    int TrainingCode=7, bool ReadPars=false,
                    double Thresh0=5, double Thresh1=5, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
                    double IEPC=2.5, double ipspdf=1.0) {
@@ -833,6 +917,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
     // N_ep:      number of weight-learning cycles divido N_ev in N_ep gruppi e faccio girare il learning 
     // NL0, NL1:  number of neurons performing track pattern recognition, organized in 2 layers
     // N_cl:      number of different signal classes (different particle momenta)
+    // rootInput: name of the root file if you want to load the data. If not provided it will simulate the events
     // CF:        fraction of connected neurons between L0 and L1
     // Occ:       probability of random hit firing 
     // ipspdf:    IPSP time dilation factor (to increase effect of inhibition)
@@ -985,7 +1070,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
         cout << "False" << endl;
     }
     cout << "                  Max mod. factor: " << MaxFactor << endl;
-    cout << "                Only 8-hit tracks: ";
+    cout << "                Only " << N_TrackingLayers << "-hit tracks: ";
     if (!anyHits) {
         cout << "True" << endl;
     } else {
@@ -1053,7 +1138,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
     char name[50];
     for (int i=0; i<N_neurons*N_classes; i++) {
         sprintf (name,"Latency%d", i);
-        Latency[i] = new TH2D (name, name, N_bins, 0., (double)NevPerEpoch, N_strips+Empty_buffer, 0., TimeStep*(N_strips+Empty_buffer));
+        Latency[i] = new TH2D (name, name, N_bins, 0., (double)NevPerEpoch, max_angle+Empty_buffer, 0., (max_angle+Empty_buffer)/omega);
     }
     TH1D * HWeight[MaxNeurons*MaxStreams];
     TH1D * Efficiency[MaxNeurons*MaxClasses];
@@ -1096,11 +1181,12 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
 
     for (int i=0; i<10; i++) {
         sprintf (name, "StreamsS%d", i);
-        StreamsS[i] = new TH2D (name, name, (N_strips+Empty_buffer)*50, 0., (N_strips+Empty_buffer)*50.*TimeStep, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        //
+        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
         sprintf (name, "StreamsB%d", i);
-        StreamsB[i] = new TH2D (name, name, (N_strips+Empty_buffer)*50, 0., (N_strips+Empty_buffer)*50.*TimeStep, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
         sprintf (name, "StreamsN%d", i);
-        StreamsN[i] = new TH2D (name, name, (N_strips+Empty_buffer)*50, 0., (N_strips+Empty_buffer)*50.*TimeStep, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
     }
 
     // Calculation of constant in excitation spike, to make it max at 1
@@ -1151,13 +1237,6 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
 
     // Initialize connection map
     if (!ReadPars) Init_connection_map();
-
-    // Initialize particle generation values
-    for (int ic=0; ic<N_classes; ic++) {
-        pvalues[ic]   = getP(ic);
-        charge[ic]    = getCharge(ic);
-    }
-
 
     // Prime the event loop - we continuously sample detector readout and feed inputs to synapses
     // ------------------------------------------------------------------------------------------
@@ -1288,11 +1367,16 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
             	currchar++;
             }
         }
-        
+
+        //load data from the root file if provided
+        if(rootInput){
+            ReadRootFileFromText(rootInput, ievent);
+        }
+        else{
         // Hit generation
         // --------------
         N_part     = 0;
-        int pclass = 0;
+        pclass = 0;
         int Nhits  = 0;            
         // Reset detector hits
         Reset_hits ();
@@ -1305,20 +1389,23 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
             do {                
                 // Reset detector hits if not first pass
                 if (Nhits>0) Reset_hits ();
-                Strip_first = N_strips-1; // static that indicates leftmost strip hit by particle (or pair). Assigned in Simulate_sighits
+                First_angle = max_angle; // static that indicates leftmost strip hit by particle (or pair). Assigned in Simulate_sighits
                 pclass = (int)myRNG->Uniform((double)N_classes-epsilon);                
                 // Simulate hits from particle track
-                Nhits = Simulate_sighits (pclass);     
-            } while ((!anyHits && Nhits<8) || Nhits<8); 
+                Nhits = Simulate_sighits ();     
+            } while ((!anyHits && Nhits<N_TrackingLayers) || Nhits<N_TrackingLayers); 
         }
 
         // Simulate background hits
+        
         double bgr_rate = Occupancy;
         if (!signal) {
             Simulate_bgrhits (bgr_rate);
         } else {
             Simulate_bgrhits (bgr_rate+1./N_strips); // Make the occupancy identical in events with and without tracks
         }
+        
+    }
 
         // See if we find with track with positive latency by at least one neuron
         for (int in=0; in<N_neurons; in++) {
@@ -1334,7 +1421,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
         PreSpike_Time.clear();
         PreSpike_Stream.clear();
         PreSpike_Signal.clear();
-        double t_in = TimeStep*ievent*(N_strips+Empty_buffer); // every event adds 0.256+maxdelay seconds (for 256 strips), allowing for L1 neurons to get L0 signal
+        double t_in = ievent*(max_angle+Empty_buffer)/omega; // every event adds 0.256+maxdelay seconds (for 256 strips), allowing for L1 neurons to get L0 signal
         Encode (t_in); 
 
         // Keep track of latency calc for each neuron in this event
@@ -1352,7 +1439,8 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
             // Save information on hit-based streams for last 500 events to histograms
             if (ievent>=N_events-500.) {
                 int is = (ievent-N_events+500)/50;
-                double time = PreSpike_Time[ispike]-(N_strips+Empty_buffer)*TimeStep*(ievent/50)*50;
+                //time = tin + thit - tin(primoevento)
+                double time = PreSpike_Time[ispike]-(max_angle+Empty_buffer)/omega*(ievent/50)*50;
                 if (PreSpike_Signal[ispike]==1) {
                     StreamsS[is]->Fill(time, PreSpike_Stream[ispike]+1);
                 } else if (PreSpike_Signal[ispike]==0) {
@@ -1438,13 +1526,13 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
                     // Fill spikes train histogram
                     if (ievent>=N_events-500.) {
                         int is = (ievent-N_events+500)/50;
-                        double time = min_fire_time-(N_strips+Empty_buffer)*TimeStep*(ievent/50)*50;
+                        double time = min_fire_time-(max_angle+Empty_buffer)/omega*(ievent/50)*50;
                         if (Neuron_layer[in_first]==1) StreamsN[is]->Fill(time, N_TrackingLayers+in_first+1);
                     }
 
                     // Fill latency histogram
                     if (N_part>0) {
-                        latency = min_fire_time-t_in-Strip_first*TimeStep;
+                        latency = min_fire_time-t_in-First_angle/omega;
                         if (latency>=0. && not_filled[in_first]) {
                             if (iepoch==N_epochs-1) Latency[in_first*N_classes+pclass]->Fill(0.5+iev_thisepoch,latency); 
                             Seen[pclass][in_first] = true;
@@ -2158,10 +2246,14 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, double CF = 1
     S->Divide(2,5);
     for (int i=0; i<10; i++) {
         S->cd(i+1);
-        StreamsS[i]->SetLineColor(kBlue);
-        StreamsS[i]->Draw("BOX");
         StreamsB[i]->SetLineColor(kRed);
-        StreamsB[i]->Draw("BOXSAME");
+        StreamsB[i]->Draw("BOX");
+
+        
+        StreamsS[i]->SetLineColor(kBlue);
+        StreamsS[i]->Draw("BOXSAME");
+
+
         StreamsN[i]->SetLineColor(kGreen);
         StreamsN[i]->Draw("BOXSAME");
     }
