@@ -894,6 +894,8 @@ void ReadFromRoot(TTree* tree, long int id_event_value){
 
 //To read Monte Carlo events
 //TODO work in progress
+
+/*
 void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
     // Open the ROOT file
     Reset_hits();
@@ -928,7 +930,7 @@ void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
         pclass++;
     N_part =countPart/N_TrackingLayers;
 }
-
+*/
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
