@@ -8,13 +8,13 @@
 // ------------------------------------------- 
 //Tracker geometry and physical constants
 // ------------------------------------------- 
-static double Bfield                  = 3.8;                              // Tesla
-static const int N_TrackingLayers     = 10;
-static double strip_r[N_TrackingLayers] = {3.0, 6.15, 10.45, 14.65, 24.9, 37.1678, 52.27, 68.7, 86.0, 108.3};//radial positions of the layers from the origin
+static float Bfield                  = 3.8;                              // Tesla
+static const short int N_TrackingLayers     = 10;
+static float strip_r[N_TrackingLayers] = {3.0, 6.15, 10.45, 14.65, 24.9, 37.1678, 52.27, 68.7, 86.0, 108.3};//radial positions of the layers from the origin
 static const int MaxStrips            = 10000;                            //Discretization of the phi angle (retained only for noise calculation)
 static int N_strips                   = 10000;
-static double pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
-static double confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
+static float pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
+static float confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
 
 // ------------------------------------------- 
 //Time encoding constants
@@ -57,11 +57,26 @@ static const int MaxStreams           = MaxNeurons + N_TrackingLayers;
 // ------------------------------------------- 
 //Other constants
 // -------------------------------------------     
-static vector<vector<double>> hit_pos;                                   //It contains (r, phi, id) of every hit inside an event (to be optimized)                                
-static double bisection_window        = (M_PI/5);                        //interval of confidence used in the bisection method to find the interceptions between layers and tracks
-static double bisection_precision     = 1.e-04;                          //[rad]
+struct Hit
+{
+    float r, phi;
+    short int id;
+
+    Hit(float r_, float phi_, short int id_)
+        : r(r_), phi(phi_), id(id_)
+    {
+    }
+};
+
+static vector<Hit> hit_pos;
+
+static float bisection_window        = (M_PI/5);                        //interval of confidence used in the bisection method to find the interceptions between layers and tracks
+static float bisection_precision     = 1.e-04;                          //[rad]
 static long int last_row_event        = 0;                               //last row associated to the previous event read
 static const int MaxClasses           = 20;
 static int pclass;
+
+static const short int BGR = 1;
+static const short int SIG = 2; 
 
 #endif // SNNT_CONSTANTS_H

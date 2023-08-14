@@ -1,5 +1,16 @@
 {
     "files.associations": {
-        "SNNT13.C": "cpp"
+        "SNNT13.C": "cpp",
+        "iostream": "cpp",
+        "vector": "cpp",
+        "xstring": "cpp",
+        "initializer_list": "cpp",
+        "xutility": "cpp",
+        "inspect.C": "cpp",
+        ".C": "cpp",
+        "draw_scatter_plot.C": "cpp",
+        "draw_histrograms.C": "cpp",
+        "ostream": "cpp",
+        "scatter_v2.C": "cpp"
     }
 }

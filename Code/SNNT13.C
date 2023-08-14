@@ -90,7 +90,7 @@ bool sortcol(const vector<double>& v1, const vector<double>& v2)
 static TRandom3 * myRNG = new TRandom3(23);
 
 
-double getP(){
+float getP(){
     if (pclass == 0 || pclass == 1)
         return 3.;
     if (pclass == 2 || pclass == 3)
@@ -98,23 +98,23 @@ double getP(){
     return 1.;
 }
 
-double getBeta(){
+float getBeta(){
     return  myRNG->Uniform(M_PI) + M_PI/2;
 }
 
-double getCharge(){
+short int getCharge(){
     return pow(-1.,pclass%2);
 }
 
 
 // Bisection method
 // ---------------------------
-double f(double r, double xc, double yc, double R, double phi){
+float f(float r, float xc, float yc, float R, float phi){
     return r*r - 2*r * (xc*cos(phi) + yc*sin(phi)) + xc*xc + yc*yc - R*R;
 }
 
-double bisection(double a, double b, double s, double r, double xc, double yc, double R){
-    double c;
+float bisection(float a, float b, float s, float r, float xc, float yc, float R){
+    float c;
     do{
         c = (b+a)*0.5;
         if((f(r,xc,yc,R,a) * f(r,xc,yc,R,c)) < 0)
@@ -370,10 +370,9 @@ void Simulate_bgrhits (double bgr_rate) {
     for (int itl=0; itl<N_TrackingLayers; itl++) {
         for (int is=0; is<N_strips; is++) {
             if (myRNG->Uniform()<bgr_rate){ 
-                double r = strip_r[itl];
-                double phi = strip_phi[is];
-                vector<double> bkg = {r, phi, 1.};
-                hit_pos.push_back(bkg);
+                float r = strip_r[itl];
+                float phi = strip_phi[is];
+                hit_pos.emplace_back(r, phi, BGR);
             }
         }   
     }
@@ -398,25 +397,25 @@ int Simulate_sighits () {
     //TODO implement V particles
     if (KindOfSignal>0) StartLayer = KindOfSignal*myRNG->Uniform(3.-epsilon); // Only simulate V-particles generated in first four layers
   
-    double p     = getP(); 
-    double beta  = getBeta(); 
-    double ch    = getCharge();
-    double R     = p*abs(ch)/(0.3*Bfield)*100.;  //(in cm)
+    float p     = getP(); 
+    float beta  = getBeta(); 
+    short int ch    = getCharge();
+    float R     = p*abs(ch)/(0.3*Bfield)*100.;  //(in cm)
     
-    double min_angle = max_angle; 
+    float min_angle = max_angle; 
 
     //We compute the particle's ideal orbit: a circumference passing through the origin.
     //To determine the intersection between layers and the circumference, we employed the numerical bisection method.
     //For the first layer, we conducted the bisection within an angular interval centered around phi_orthogonal, defined as follows:
 
-    double phi_ort;
+    float phi_ort;
     if(ch<0) 
         phi_ort = beta + (M_PI/2.);
     else
         phi_ort = beta + 3*(M_PI/2.);
     
     for (int itl=StartLayer; itl<N_TrackingLayers; itl++) { 
-        double r_hit  = strip_r[itl];
+        float r_hit  = strip_r[itl];
         for (int ich=0; ich<N_part; ich++) { 
             //TODO  modify to include V-particles
             /*
@@ -427,10 +426,10 @@ int Simulate_sighits () {
             */
             
             //computing center position
-            double yc = R*sin(beta);
-            double xc = R*cos(beta);
+            float yc = R*sin(beta);
+            float xc = R*cos(beta);
 
-            double phi_hit = bisection(phi_ort - bisection_window,phi_ort + bisection_window, bisection_precision, r_hit, xc, yc, R);
+            float phi_hit = bisection(phi_ort - bisection_window,phi_ort + bisection_window, bisection_precision, r_hit, xc, yc, R);
 
             
             if(phi_hit<0) phi_hit += 2*M_PI;
@@ -442,8 +441,7 @@ int Simulate_sighits () {
             //updating the searching window for the next layer
             phi_ort = phi_hit;
 
-            vector<double> sgn = {r_hit, phi_hit, 2.};
-            hit_pos.push_back(sgn);
+            hit_pos.emplace_back(r_hit, phi_hit, SIG);
             Nhits++;
         }
     }
@@ -460,15 +458,19 @@ int GetITL(double r_hit){
 }
 
 void Encode (double t_in) { 
-    sort(hit_pos.begin(), hit_pos.end(), sortcol); //sort hit_pos by phi
+    //sort by phi angle
+    sort(hit_pos.begin(), hit_pos.end(), [](const Hit& h1, const Hit& h2) {
+        return h1.phi < h2.phi;
+    });
+
     for (auto &&row : hit_pos)
     {
-        double time = t_in + row[1]/omega;
-        int itl = GetITL(row[0]);
+        double time = t_in + row.phi/omega;
+        int itl = GetITL(row.r);
         
         PreSpike_Time.push_back(time);
         PreSpike_Stream.push_back(itl);
-        PreSpike_Signal.push_back(row[2]-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
+        PreSpike_Signal.push_back(row.id-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
     }
 }
 // Model Excitatory Post-Synaptic Potential
@@ -793,11 +795,12 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
     cout << "Create variables" << endl;
 
     //Creating variables
-    double r, phi, id;
+    float r, phi;
+    short int id;
     long int id_event;
 
     cout << "Create tree" << endl;
-    TTree *tree = new TTree("tree", "HitsTree");
+    TTree *tree = new TTree("tree", "tree");
 
     //Arrange the variables as pointers to branches of the tree 
     tree->Branch("r", &r);
@@ -813,7 +816,7 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
         // Hit generation
         // --------------
         N_part     = 0;
-        pclass = 0;
+        pclass = -1;
         int Nhits  = 0;            
         // Reset detector hits
         Reset_hits ();
@@ -843,9 +846,9 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
 
         //Filling the TTree
         for (long int i = 0; i < hit_pos.size(); i++) {
-            r = hit_pos[i][0];
-            phi = hit_pos[i][1];
-            id = hit_pos[i][2];
+            r = hit_pos[i].r;
+            phi = hit_pos[i].phi;
+            id = hit_pos[i].id;
             tree->Fill();
         }
     }
@@ -853,27 +856,16 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
     file->Close();
 }
 
-//TODO: optimize
-void ReadRootFileFromText(const char* fileInput, long int id_event_value){
+//To read simulated events
+void ReadFromRoot(TTree* tree, long int id_event_value){
     // Open the ROOT file
-    hit_pos.clear();
+    Reset_hits();
     int countPart = 0;
-    TFile *file = TFile::Open(fileInput, "READ");
-    if (!file || file->IsZombie()) {
-        cerr << "Error opening file!" << endl;
-    }
-
-    // Get the TTree
-    TTree *tree = dynamic_cast<TTree*>(file->Get("tree"));
-    if (!tree) {
-        cerr << "Error getting TTree!" << endl;
-        file->Close();
-    }
 
     // Attach the branches to variables
-    double r;
-    double phi;
-    double id;
+    float r;
+    float phi;
+    short int id;
     long int id_event;
 
     tree->SetBranchAddress("r", &r);
@@ -890,23 +882,58 @@ void ReadRootFileFromText(const char* fileInput, long int id_event_value){
             last_row_event = i;
             break;
         }
-        if(static_cast<int>(id)==2){
+        if(static_cast<int>(id)==SIG){
             countPart++;
         }
-        vector<double> tmp = {r, phi, id};
-        hit_pos.push_back(tmp);
+        hit_pos.emplace_back(r, phi, id);
     }
+    if(pclass==-1)
+        pclass++;
     N_part =countPart/N_TrackingLayers;
+}
 
-    // Close the ROOT file
-    file->Close();
+//To read Monte Carlo events
+//TODO work in progress
+void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
+    // Open the ROOT file
+    Reset_hits();
+    int countPart = 0;
+
+    // Attach the branches to variables
+    float r;
+    float phi;
+    short int id;
+    long int id_event;
+
+    tree->SetBranchAddress("r", &r);
+    tree->SetBranchAddress("phi", &phi);
+    tree->SetBranchAddress("id", &id);
+    tree->SetBranchAddress("id_event", &id_event);
+    tree->SetBranchAddress("pclass", &pclass);
+
+ 
+    // Loop over entries and find rows with the specified id_event value
+    for (long int i = last_row_event; i < tree->GetEntries(); ++i) {
+        tree->GetEntry(i);
+        if (id_event!=id_event_value) {
+            last_row_event = i;
+            break;
+        }
+        if(static_cast<int>(id)==SIG){
+            countPart++;
+        }
+        hit_pos.emplace_back(r, phi, id);
+    }
+    if(pclass==-1)
+        pclass++;
+    N_part =countPart/N_TrackingLayers;
 }
 
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
 // ------------
-void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, const char* rootInput = nullptr, double CF = 1., double Occ=0.000390625, 
+void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInput = nullptr, double CF = 1., double Occ=0.000390625, 
                    int TrainingCode=7, bool ReadPars=false,
                    double Thresh0=5, double Thresh1=5, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
                    double IEPC=2.5, double ipspdf=1.0) {
@@ -1358,6 +1385,27 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, const char* r
     int iepoch        = 0;
     int ind_qbest     = 0;
     
+    //Open the root data file if provided
+    TFile *file = TFile::Open(rootInput, "READ");
+    if (!file || file->IsZombie()) {
+        cerr << "Error opening file!" << endl;
+        cout << "Falling back to events simulation" << endl;
+        rootInput = nullptr;
+    }
+    // Get the TTree
+    TTree *tree = (TTree*)(file->Get("tree;1"));
+    if (!tree) {
+        cerr << "Error getting TTree!" << endl;
+        cout << "Falling back to events simulation" << endl;
+        rootInput = nullptr;
+        file->Close();
+    }
+
+    //set maximum amount of memory used for caching TBranches to 250MB
+    tree->SetMaxVirtualSize(250000000);
+    //load all the data blocks into memory
+    tree->LoadBaskets();
+
     do {
 
         iev_thisepoch++;
@@ -1370,7 +1418,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, const char* r
 
         //load data from the root file if provided
         if(rootInput){
-            ReadRootFileFromText(rootInput, ievent);
+            ReadFromRoot(tree, ievent);
         }
         else{
         // Hit generation
