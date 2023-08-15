@@ -92,14 +92,15 @@ static TRandom3 * myRNG = new TRandom3(23);
 
 float getP(){
     if (pclass == 0 || pclass == 1)
-        return 3.;
+        return 1.;
     if (pclass == 2 || pclass == 3)
-        return 10.;
-    return 1.;
+        return 3.;
+    return 10;
 }
 
 float getBeta(){
-    return  myRNG->Uniform(M_PI) + M_PI/2;
+    //return  myRNG->Uniform(M_PI) + M_PI/2;
+    return  M_PI/2 - myRNG->Uniform(0.8);
 }
 
 short int getCharge(){
@@ -413,6 +414,8 @@ int Simulate_sighits () {
         phi_ort = beta + (M_PI/2.);
     else
         phi_ort = beta + 3*(M_PI/2.);
+    if (phi_ort > 2.*M_PI) phi_ort-= 2*M_PI;
+    
     
     for (int itl=StartLayer; itl<N_TrackingLayers; itl++) { 
         float r_hit  = strip_r[itl];
@@ -472,6 +475,19 @@ void Encode (double t_in) {
         PreSpike_Stream.push_back(itl);
         PreSpike_Signal.push_back(row.id-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
     }
+
+    //rescan from [0, delta]
+    for (auto &&row : hit_pos)
+    {
+        if(row.phi > delta) break;
+        double time = t_in + (row.phi + M_PI *2.)/omega;
+        int itl = GetITL(row.r);
+        
+        PreSpike_Time.push_back(time);
+        PreSpike_Stream.push_back(itl);
+        PreSpike_Signal.push_back(row.id-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
+    }
+
 }
 // Model Excitatory Post-Synaptic Potential
 // We take this as parametrized in T. Masquelier et al., "Competitive STDP-Based Spike Pattern Learning", DOI: 10.1162/neco.2008.06-08-804
@@ -1389,25 +1405,29 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     
     //Open the root data file if provided
     TFile *file = TFile::Open(rootInput, "READ");
+    TTree *tree;
     if (!file || file->IsZombie()) {
         cerr << "Error opening file!" << endl;
         cout << "Falling back to events simulation" << endl;
         rootInput = nullptr;
     }
-    // Get the TTree
-    TTree *tree = (TTree*)(file->Get("tree;1"));
-    if (!tree) {
-        cerr << "Error getting TTree!" << endl;
-        cout << "Falling back to events simulation" << endl;
-        rootInput = nullptr;
-        file->Close();
+    else{
+         // Get the TTree
+        tree = (TTree*)(file->Get("tree;1"));
+        if (!tree) {
+            cerr << "Error getting TTree!" << endl;
+            cout << "Falling back to events simulation" << endl;
+            rootInput = nullptr;
+            file->Close();
+        }
+        else{
+            //set maximum amount of memory used for caching TBranches to 250MB
+            tree->SetMaxVirtualSize(250000000);
+            //load all the data blocks into memory
+            tree->LoadBaskets();
+        }
     }
-
-    //set maximum amount of memory used for caching TBranches to 250MB
-    tree->SetMaxVirtualSize(250000000);
-    //load all the data blocks into memory
-    tree->LoadBaskets();
-
+   
     do {
 
         iev_thisepoch++;

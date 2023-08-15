@@ -20,9 +20,10 @@ static float confidence_r            = 0.1;                              // Conf
 //Time encoding constants
 // ------------------------------------------- 
 static int Empty_buffer               = 0;                                // (old) We process events every 300 TimeSteps, leaving time for L0 neurons to pass delayed signal to L1 ones
-static double max_angle = 2.0 * M_PI;                                     //max angle to scan
+static double delta     = 0.7;                                            //max delta for 1Gev is 0.66rad
+static double max_angle = 2.0 * M_PI + delta;                             //max angle to scan
 static double frequency = 40e6;                                           //CMS tracker reading frequency [Hz]
-static double omega = 2.0 * M_PI * frequency;                             //reading angular velocity
+static double omega = max_angle * frequency;                              //reading angular velocity
 
 // ------------------------------------------- 
 //neural network constants
