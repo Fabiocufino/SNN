@@ -100,7 +100,7 @@ float getP(){
 
 float getBeta(){
     //return  myRNG->Uniform(M_PI) + M_PI/2;
-    return  M_PI/2 - myRNG->Uniform(0.8);
+    return  M_PI/2 - 0.1 - myRNG->Uniform(0.6);
 }
 
 short int getCharge(){
@@ -875,6 +875,7 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
 //To read simulated events
 void ReadFromRoot(TTree* tree, long int id_event_value){
     // Open the ROOT file
+    
     Reset_hits();
     int countPart = 0;
 
@@ -911,42 +912,120 @@ void ReadFromRoot(TTree* tree, long int id_event_value){
 //To read Monte Carlo events
 //TODO work in progress
 
-/*
-void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
-    // Open the ROOT file
-    Reset_hits();
-    int countPart = 0;
 
-    // Attach the branches to variables
+void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
+
+    Reset_hits();
+  
     float r;
     float phi;
-    short int id;
-    long int id_event;
+    float id;
+    float id_event;
 
-    tree->SetBranchAddress("r", &r);
-    tree->SetBranchAddress("phi", &phi);
-    tree->SetBranchAddress("id", &id);
-    tree->SetBranchAddress("id_event", &id_event);
-    tree->SetBranchAddress("pclass", &pclass);
+    IT->SetBranchAddress("cluster_R", &r);
+    IT->SetBranchAddress("cluster_phi", &phi);
+    IT->SetBranchAddress("cluster_type", &id);
+    IT->SetBranchAddress("eventID", &id_event);
+    pclass = 0;
 
  
     // Loop over entries and find rows with the specified id_event value
-    for (long int i = last_row_event; i < tree->GetEntries(); ++i) {
-        tree->GetEntry(i);
-        if (id_event!=id_event_value) {
+    for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
+        IT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
             last_row_event = i;
             break;
         }
-        if(static_cast<int>(id)==SIG){
-            countPart++;
+        if(static_cast<int>(id)==1){
+            id = SIG;
         }
-        hit_pos.emplace_back(r, phi, id);
+        else id=BGR;
+        
+        hit_pos.emplace_back(r, phi, static_cast<int>(id));
     }
-    if(pclass==-1)
-        pclass++;
-    N_part =countPart/N_TrackingLayers;
+    
+    //OUT Tracker
+    
+    OT->SetBranchAddress("cluster_R", &r);
+    OT->SetBranchAddress("cluster_phi", &phi);
+    OT->SetBranchAddress("cluster_type", &id);
+    OT->SetBranchAddress("eventID", &id_event);
+
+    for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
+        OT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
+            last_row_event_OT = i;
+            break;
+        }
+        if(static_cast<int>(id)==1){
+            id = SIG;
+        }
+        else id=BGR;
+        
+        hit_pos.emplace_back(r, phi, static_cast<int>(id));
+    }
+
+    N_part = 2;
+
 }
-*/
+
+void Test(const char* filename=""){
+     TFile* file = TFile::Open(filename);
+    if (!file || file->IsZombie()) {
+        cerr << "Error: Cannot open file " << filename << endl;
+        return;
+    }
+
+    // Access the "clusterValidIT" directory
+    TDirectoryFile* dirIT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidIT"));
+    TDirectoryFile* dirOT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidOT"));
+
+    if (!dirIT) {
+        cerr << "Error: Cannot access directory clusterValidIT" << endl;
+        file->Close();
+        return;
+    }
+
+    if (!dirOT) {
+        cerr << "Error: Cannot access directory clusterValidOT" << endl;
+        file->Close();
+        return;
+    }
+
+    // Access the "tree" in the "clusterValidIT" directory
+    TTree* IT = dynamic_cast<TTree*>(dirIT->Get("tree"));
+    TTree* OT = dynamic_cast<TTree*>(dirOT->Get("tree;1"));
+
+    if (!IT) {
+        cerr << "Error: Cannot access tree in clusterValidIT" << endl;
+        file->Close();
+        return;
+    }
+
+    if (!OT) {
+        cerr << "Error: Cannot access tree in clusterValidOT" << endl;
+        file->Close();
+        return;
+    }
+
+    cout << "Read first event " << endl;
+    ReadFromRoot(IT, OT, 0);
+    cout << "Print matrix " << endl;
+    for (auto &&element : hit_pos)
+    {
+        cout << element.r << " "<< element.phi << " "<< element.id << " "<<  endl;
+    }
+    cout << "Read second event " << endl;
+    ReadFromRoot(IT, OT, 1);
+    cout << "Print matrix " << endl;
+    for (auto &&element : hit_pos)
+    {
+        cout << element.r << " "<< element.phi << " "<< element.id << " "<<  endl;
+
+    }
+    
+}
+
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
@@ -1226,12 +1305,11 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
 
     for (int i=0; i<10; i++) {
         sprintf (name, "StreamsS%d", i);
-        //
-        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
         sprintf (name, "StreamsB%d", i);
-        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
         sprintf (name, "StreamsN%d", i);
-        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*50, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
     }
 
     // Calculation of constant in excitation spike, to make it max at 1

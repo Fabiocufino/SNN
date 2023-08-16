@@ -20,7 +20,7 @@ static float confidence_r            = 0.1;                              // Conf
 //Time encoding constants
 // ------------------------------------------- 
 static int Empty_buffer               = 0;                                // (old) We process events every 300 TimeSteps, leaving time for L0 neurons to pass delayed signal to L1 ones
-static double delta     = 0.7;                                            //max delta for 1Gev is 0.66rad
+static double delta     = 0.6;                                            //max delta for 1Gev is 0.66rad
 static double max_angle = 2.0 * M_PI + delta;                             //max angle to scan
 static double frequency = 40e6;                                           //CMS tracker reading frequency [Hz]
 static double omega = max_angle * frequency;                              //reading angular velocity
@@ -74,6 +74,7 @@ static vector<Hit> hit_pos;
 static float bisection_window        = (M_PI/5);                        //interval of confidence used in the bisection method to find the interceptions between layers and tracks
 static float bisection_precision     = 1.e-04;                          //[rad]
 static long int last_row_event        = 0;                               //last row associated to the previous event read
+static long int last_row_event_OT     = 0;
 static const int MaxClasses           = 20;
 static int pclass;
 
