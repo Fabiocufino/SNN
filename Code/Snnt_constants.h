@@ -15,12 +15,13 @@ static const int MaxStrips            = 10000;                            //Disc
 static int N_strips                   = 10000;
 static float pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
 static float confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
-
+static const int N_ZetaLayers              = 2;
+static const int N_InputStreams = N_TrackingLayers * N_ZetaLayers;
 // ------------------------------------------- 
 //Time encoding constants
 // ------------------------------------------- 
 static int Empty_buffer               = 0;                                // (old) We process events every 300 TimeSteps, leaving time for L0 neurons to pass delayed signal to L1 ones
-static double delta     = 0.6;                                            //max delta for 1Gev is 0.66rad
+static double delta     = 0.7;                                            //max delta for 1Gev is 0.66rad
 static double max_angle = 2.0 * M_PI + delta;                             //max angle to scan
 static double frequency = 40e6;                                           //CMS tracker reading frequency [Hz]
 static double omega = max_angle * frequency;                              //reading angular velocity
@@ -53,18 +54,19 @@ static double MaxFactor               = 0.2;                             // Init
 static double eff_target              = 0.9;
 static double acc_target              = 0.05;
 static bool learnDelays = false;
-static const int MaxStreams           = MaxNeurons + N_TrackingLayers;
+static const int MaxStreams           = MaxNeurons + N_TrackingLayers*N_ZetaLayers;
 
 // ------------------------------------------- 
 //Other constants
 // -------------------------------------------     
 struct Hit
 {
-    float r, phi;
+    int r, z;
+    float phi;
     short int id;
 
-    Hit(float r_, float phi_, short int id_)
-        : r(r_), phi(phi_), id(id_)
+    Hit(int r_, int z_, float phi_, short int id_)
+        : r(r_), z(z_), phi(phi_), id(id_)
     {
     }
 };
@@ -80,5 +82,20 @@ static int pclass;
 
 static const short int BGR = 1;
 static const short int SIG = 2; 
+
+ofstream fout_n("n.txt");
+ofstream fout_h_bg("h_bg.txt");
+ofstream fout_h_sig("h_sig.txt");
+
+
+
+
+
+
+static double max_R_IT = 300.;
+static double max_Z_IT = 3000.;
+
+static double max_R_OT = 1200.;
+static double max_Z_OT = 3000.;
 
 #endif // SNNT_CONSTANTS_H

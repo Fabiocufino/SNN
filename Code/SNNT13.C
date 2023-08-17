@@ -99,8 +99,8 @@ float getP(){
 }
 
 float getBeta(){
-    //return  myRNG->Uniform(M_PI) + M_PI/2;
-    return  M_PI/2 - 0.1 - myRNG->Uniform(0.6);
+    return  myRNG->Uniform(2.*M_PI);
+    //return  M_PI/2 - 0.1 - myRNG->Uniform(0.6);
 }
 
 short int getCharge(){
@@ -197,7 +197,7 @@ int Read_Parameters () {
         for (int is=0; is<N_streams; is++) {
             parfile >> b;
             Void_weight[in][is] = b;
-            if (in<N_neuronsL[0] && is>=N_TrackingLayers) Void_weight[in][is] = true; // just making sure
+            if (in<N_neuronsL[0] && is>=N_InputStreams) Void_weight[in][is] = true; // just making sure
         }
     }
     parfile.close();
@@ -345,7 +345,7 @@ void Init_delays () {
 void Init_connection_map() {
     for (int in=0; in<N_neurons; in++) {
         for (int is=0; is<N_streams; is++) {
-            if (in<N_neuronsL[0] && is>=N_TrackingLayers) {
+            if (in<N_neuronsL[0] && is>=N_InputStreams) {
                 Void_weight[in][is] = true; 
             } else {
                 Void_weight[in][is] = false; 
@@ -373,7 +373,7 @@ void Simulate_bgrhits (double bgr_rate) {
             if (myRNG->Uniform()<bgr_rate){ 
                 float r = strip_r[itl];
                 float phi = strip_phi[is];
-                hit_pos.emplace_back(r, phi, BGR);
+                hit_pos.emplace_back(r, 0, phi, BGR);
             }
         }   
     }
@@ -444,7 +444,7 @@ int Simulate_sighits () {
             //updating the searching window for the next layer
             phi_ort = phi_hit;
 
-            hit_pos.emplace_back(r_hit, phi_hit, SIG);
+            hit_pos.emplace_back(r_hit,0, phi_hit, SIG);
             Nhits++;
         }
     }
@@ -460,6 +460,14 @@ int GetITL(double r_hit){
     }
 }
 
+int GetStreamID(int r, int z){
+    return r*N_ZetaLayers+z; 
+}
+void GetR_Z(int combind){
+    int z = combind%N_ZetaLayers;
+    int r = (combind-z)/N_ZetaLayers;
+}
+
 void Encode (double t_in) { 
     //sort by phi angle
     sort(hit_pos.begin(), hit_pos.end(), [](const Hit& h1, const Hit& h2) {
@@ -469,7 +477,10 @@ void Encode (double t_in) {
     for (auto &&row : hit_pos)
     {
         double time = t_in + row.phi/omega;
-        int itl = GetITL(row.r);
+        //i'll need a row.z
+        //uncomment when implemented:
+        int itl = GetStreamID(row.r, row.z);
+        //int itl = GetITL(row.r);
         
         PreSpike_Time.push_back(time);
         PreSpike_Stream.push_back(itl);
@@ -481,6 +492,8 @@ void Encode (double t_in) {
     {
         if(row.phi > delta) break;
         double time = t_in + (row.phi + M_PI *2.)/omega;
+        //uncomment when implemented:
+        //int itl = GetStreamID(row.r, row.z)
         int itl = GetITL(row.r);
         
         PreSpike_Time.push_back(time);
@@ -796,7 +809,7 @@ double Compute_Q (double eff, double acc, double sel) {
 }
 
 //TODO: optimize
-void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double occ = 0.000390625) {
+void createRootFile(const char* nomeFile, int nev, int classes=6, double occ = 0.000390625) {
     N_classes = classes;
     Occupancy = occ;
     Define_tracker ();
@@ -869,10 +882,12 @@ void createRootFileFromText(const char* nomeFile, int nev, int classes=6, double
         }
     }
     tree->Write(); 
-    file->Close();
+
 }
 
 //To read simulated events
+
+//Legge i dati GENERATI da noi
 void ReadFromRoot(TTree* tree, long int id_event_value){
     // Open the ROOT file
     
@@ -902,7 +917,7 @@ void ReadFromRoot(TTree* tree, long int id_event_value){
         if(static_cast<int>(id)==SIG){
             countPart++;
         }
-        hit_pos.emplace_back(r, phi, id);
+        hit_pos.emplace_back(r,0, phi, id);
     }
     if(pclass==-1)
         pclass++;
@@ -913,6 +928,7 @@ void ReadFromRoot(TTree* tree, long int id_event_value){
 //TODO work in progress
 
 
+//Legge i dati di MIA
 void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
 
     Reset_hits();
@@ -941,7 +957,7 @@ void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
         }
         else id=BGR;
         
-        hit_pos.emplace_back(r, phi, static_cast<int>(id));
+        hit_pos.emplace_back(r,0, phi, static_cast<int>(id));
     }
     
     //OUT Tracker
@@ -962,15 +978,132 @@ void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
         }
         else id=BGR;
         
-        hit_pos.emplace_back(r, phi, static_cast<int>(id));
+        hit_pos.emplace_back(r,0, phi, static_cast<int>(id));
     }
 
     N_part = 2;
 
 }
 
+
+// //Preprocess Mia datas
+void PreprocessRoot(TTree* IT, TTree* OT,  long int id_event_value, TTree* TT, int bin_r, int bin_z){
+
+    Reset_hits();
+
+    float r_write, z_write;
+    float phi_write;
+    float id_write;
+    float id_event_write;
+    float pclass_write;
+
+    double delta_r_IT = max_R_IT/bin_r;
+    double delta_z_IT = max_Z_IT/bin_z;
+
+    double delta_r_OT = max_R_OT/bin_r;
+    double delta_z_OT = max_Z_OT/bin_z;
+
+
+    TT->Branch("r", &r_write);
+    TT->Branch("z", &z_write);
+    TT->Branch("phi", &phi_write);
+    TT->Branch("id", &id_write);
+    TT->Branch("id_event", &id_event_write);
+    TT->Branch("pclass", &pclass_write);
+
+
+
+    //-----------------------READ------------------------------
+    //Creating variables
+    float r, phi, z;
+    float id;
+    float id_event;
+
+    cout << "Create file 2" << endl;
+    IT->SetBranchAddress("cluster_R", &r);
+    IT->SetBranchAddress("cluster_z", &z);
+    IT->SetBranchAddress("cluster_phi", &phi);
+    IT->SetBranchAddress("cluster_type", &id);
+    IT->SetBranchAddress("eventID", &id_event);
+    pclass = 0;
+
+ 
+    // Loop over entries and find rows with the specified id_event value
+    for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
+        IT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
+            cout << "TEST" << endl;
+            cout << " -------- " << id_event << "  " << id_event_value << endl;
+            last_row_event = i;
+            break;
+        }
+        if(static_cast<int>(id)==1){
+            id = SIG;
+        }
+        else id=BGR;
+
+        //convert R in id
+        r_write = (int) (r / delta_r_IT); 
+        
+        //convert Z in id
+        z_write = (int)  ((z + max_Z_IT) / delta_z_IT);
+        cout<<z_write<<endl;
+        //fill data
+        phi_write = phi;
+        id_write = id;
+        id_event_write = id_event;
+        pclass_write = pclass;
+
+        TT->Fill();
+
+
+        hit_pos.emplace_back(r, 0, phi, static_cast<int>(id));
+    }
+    
+    //OUT Tracker
+    
+    OT->SetBranchAddress("cluster_R", &r);
+    OT->SetBranchAddress("cluster_z", &z);
+    OT->SetBranchAddress("cluster_phi", &phi);
+    OT->SetBranchAddress("cluster_type", &id);
+    OT->SetBranchAddress("eventID", &id_event);
+
+    for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
+        OT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
+            last_row_event_OT = i;
+            break;
+        }
+        if(static_cast<int>(id)==1){
+            id = SIG;
+        }
+        else id=BGR;
+        
+
+        //convert R in id
+        r_write = (int) (r / delta_r_OT); 
+
+        
+        //convert Z in id
+        z_write = (int) ((z + max_Z_OT) / delta_z_OT);
+        cout << "ot " << z_write <<endl;
+        //fill data
+        phi_write = phi;
+        id_write = id;
+        id_event_write = id_event;
+        pclass_write = pclass;
+
+        TT->Fill();
+        
+        hit_pos.emplace_back(r,0, phi, static_cast<int>(id));
+    }
+    TT->Write(); 
+    N_part = 2;  
+
+}
+
 void Test(const char* filename=""){
-     TFile* file = TFile::Open(filename);
+    TFile* file = TFile::Open(filename, "READ");
     if (!file || file->IsZombie()) {
         cerr << "Error: Cannot open file " << filename << endl;
         return;
@@ -1008,21 +1141,27 @@ void Test(const char* filename=""){
         return;
     }
 
-    cout << "Read first event " << endl;
-    ReadFromRoot(IT, OT, 0);
-    cout << "Print matrix " << endl;
-    for (auto &&element : hit_pos)
-    {
-        cout << element.r << " "<< element.phi << " "<< element.id << " "<<  endl;
+    //-----------------------WRITE------------------------------------
+    cout << "Create file" << endl;
+    TFile* fileW = TFile::Open("Defq.root", "RECREATE");
+    if (!file || fileW->IsZombie()) {
+        cerr << "Errore nell'apertura o creazione del file ROOT." << endl;
+        return;
     }
-    cout << "Read second event " << endl;
-    ReadFromRoot(IT, OT, 1);
-    cout << "Print matrix " << endl;
-    for (auto &&element : hit_pos)
-    {
-        cout << element.r << " "<< element.phi << " "<< element.id << " "<<  endl;
 
-    }
+
+
+    cout << "Create tree 3" << endl;
+    TTree *TT = new TTree("TT", "TT");
+    TT->SetDirectory(fileW);
+    //--------------------------------------------
+
+    cout << "Read first event " << endl;
+    PreprocessRoot(IT, OT, 1,TT, 100, 300);
+
+    cout << "Here" <<endl;
+    fileW->Close();
+    file->Close();
     
 }
 
@@ -1111,7 +1250,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     IE_Pot_const      = IEPC;
     IPSP_dt_dilation  = ipspdf;
     N_neurons = N_neuronsL[0] + N_neuronsL[1];
-    N_streams = N_TrackingLayers + N_neuronsL[0];
+    N_streams = N_InputStreams + N_neuronsL[0];
     NevPerEpoch = N_events/N_epochs;
     // Assign meta-learning booleans
     update9           = false;
@@ -1305,11 +1444,11 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
 
     for (int i=0; i<10; i++) {
         sprintf (name, "StreamsS%d", i);
-        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
         sprintf (name, "StreamsB%d", i);
-        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
         sprintf (name, "StreamsN%d", i);
-        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_TrackingLayers+N_neurons, 0.5, N_TrackingLayers+N_neurons+0.5);
+        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
     }
 
     // Calculation of constant in excitation spike, to make it max at 1
@@ -1606,7 +1745,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                 // We implement a scheme where input streams produce an IE signal into L0, an EPS into L1, and L0 neurons EPS into L1
                 // Add to neuron history, masking out L1 spikes for L0 neurons
                 int is = PreSpike_Stream[ispike];
-                if (is<N_TrackingLayers || Neuron_layer[in]>0) { // otherwise stream "is" does not lead to neuron "in"
+                if (is<N_InputStreams || Neuron_layer[in]>0) { // otherwise stream "is" does not lead to neuron "in"
                     History_time[in].push_back(t);
                     if (PreSpike_Signal[ispike]==2) { // L0 neuron-induced spike 
                         History_type[in].push_back(1); 
@@ -1667,7 +1806,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                     // Create EPS signal in L0 neuron-originated streams 
                     if (Neuron_layer[in_first]==0) { // this is a Layer-0 neuron
                         PreSpike_Time.insert(PreSpike_Time.begin()+ispike+1, min_fire_time);
-                        PreSpike_Stream.insert(PreSpike_Stream.begin()+ispike+1, N_TrackingLayers+in_first);
+                        PreSpike_Stream.insert(PreSpike_Stream.begin()+ispike+1, N_InputStreams+in_first);
                         PreSpike_Signal.insert(PreSpike_Signal.begin()+ispike+1, 2);
                     }
 
@@ -1675,11 +1814,12 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                     if (ievent>=N_events-500.) {
                         int is = (ievent-N_events+500)/50;
                         double time = min_fire_time-(max_angle+Empty_buffer)/omega*(ievent/50)*50;
-                        if (Neuron_layer[in_first]==1) StreamsN[is]->Fill(time, N_TrackingLayers+in_first+1);
+                        if (Neuron_layer[in_first]==1) StreamsN[is]->Fill(time, N_InputStreams+in_first+1);
                     }
 
                     // Fill latency histogram
                     if (N_part>0) {
+                        //quanto tempo ci ha messo il primo neurone a sparare rispestto all'arrivo temporale della prima hit?
                         latency = min_fire_time-t_in-First_angle/omega;
                         if (latency>=0. && not_filled[in_first]) {
                             if (iepoch==N_epochs-1) Latency[in_first*N_classes+pclass]->Fill(0.5+iev_thisepoch,latency); 
@@ -1735,6 +1875,9 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
             }
         }
 
+        //prespike_time.push_back(time) -> tempo della Hit o dello spike di L0
+        //prespike_Stream -> id del tracking layer della hit o id del neurone di L0 che ha sparato
+        //prespike_Signal -> spike type: 0 if BKG 1 if Track, 2 if NeuronFire
         // Fill efficiency histograms every NevPerEpoch events, compute Q value and Selectivity, modify parameters
         // ---------------------------------------------------------------------------------------------------
         if (iev_thisepoch==NevPerEpoch) { // we did NevPerEpoch events
@@ -2109,7 +2252,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                 if (updateConnections) {
                     for (int in=0; in<N_neurons; in++) {
                         for (int is=0; is<N_streams; is++) {
-                            if (in>=N_neuronsL[0] || is<N_TrackingLayers) {
+                            if (in>=N_neuronsL[0] || is<N_InputStreams) {
                                 oldVoid_weight[in][is] = Void_weight[in][is];
                                 if (!Void_weight[in][is]) {
                                     if (myRNG->Uniform()<ProbWSwitchDown) { 
@@ -2198,7 +2341,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                         if (updateConnections) {
                             for (int in=0; in<N_neurons; in++) {
                                 for (int is=0; is<N_streams; is++) {
-                                    if (in>=N_neuronsL[0] || is<N_TrackingLayers) {
+                                    if (in>=N_neuronsL[0] || is<N_InputStreams) {
                                         if (!Void_weight[in][is]) {
                                             if (myRNG->Uniform()<ProbWSwitchDown) { 
                                                 Void_weight[in][is] = !Void_weight[in][is];
@@ -2263,7 +2406,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
                         if (updateConnections) {
                             for (int in=0; in<N_neurons; in++) {
                                 for (int is=0; is<N_streams; is++) {
-                                    if (in>=N_neuronsL[0] || is<N_TrackingLayers) {
+                                    if (in>=N_neuronsL[0] || is<N_InputStreams) {
                                         Void_weight[in][is]    = bestVoid_weight[in][is];
                                         oldVoid_weight[in][is] = Void_weight[in][is];
                                         if (!Void_weight[in][is]) {

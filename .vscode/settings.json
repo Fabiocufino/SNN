@@ -11,6 +11,9 @@
         "draw_scatter_plot.C": "cpp",
         "draw_histrograms.C": "cpp",
         "ostream": "cpp",
-        "scatter_v2.C": "cpp"
+        "scatter_v2.C": "cpp",
+        "__locale": "cpp",
+        "plot.C": "cpp",
+        "ios": "cpp"
     }
 }
