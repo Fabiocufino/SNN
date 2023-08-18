@@ -15,6 +15,10 @@
         "__locale": "cpp",
         "plot.C": "cpp",
         "ios": "cpp",
-        "Generate.C": "cpp"
+        "Generate.C": "cpp",
+        "locale": "cpp",
+        "iosfwd": "cpp",
+        "string": "cpp",
+        "filesystem": "cpp"
     }
 }
