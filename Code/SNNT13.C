@@ -455,17 +455,33 @@ int Simulate_sighits () {
 // Encode hits in spike stream / we do it in a single stream with code for layer
 // -----------------------------------------------------------------------------
 int GetITL(double r_hit){
-    for (int i = 0; i < N_TrackingLayers; i++){
-        if((r_hit > strip_r[i] - confidence_r) && (r_hit < strip_r[i] + confidence_r)) return i;
+    return (int)(r_hit / r_strip); 
+    
+    /*
+        for (int i = 0; i < N_TrackingLayers; i++){
+        
+        if((r_hit > strip_r[i] - confidence_r_left[i]) && (r_hit < strip_r[i] + confidence_r_right[i])){ 
+            cout << i;
+            return i;
+        }
+        
     }
+    return N_TrackingLayers+1;
+
+    */
+}
+
+int GetIZ(double z){
+    return (int)  ((z + z_range/2) / z_strip);
 }
 
 int GetStreamID(int r, int z){
-    return r*N_ZetaLayers+z; 
+    return r+z*N_TrackingLayers; 
+    //return r*N_ZetaLayers+z;
 }
 void GetR_Z(int combind){
-    int z = combind%N_ZetaLayers;
-    int r = (combind-z)/N_ZetaLayers;
+    int r = combind%N_TrackingLayers;
+    int z = (combind-r)/N_ZetaLayers;
 }
 
 void Encode (double t_in) { 
@@ -479,9 +495,8 @@ void Encode (double t_in) {
         double time = t_in + row.phi/omega;
         //i'll need a row.z
         //uncomment when implemented:
-        int itl = GetStreamID(row.r, row.z);
-        //int itl = GetITL(row.r);
-        
+        int itl = GetStreamID(GetITL(row.r), GetIZ(row.z));
+
         PreSpike_Time.push_back(time);
         PreSpike_Stream.push_back(itl);
         PreSpike_Signal.push_back(row.id-1); // 0,1,2 -> -1,0,1 respectively NoHit, Backgroung, Signal
@@ -493,8 +508,7 @@ void Encode (double t_in) {
         if(row.phi > delta) break;
         double time = t_in + (row.phi + M_PI *2.)/omega;
         //uncomment when implemented:
-        //int itl = GetStreamID(row.r, row.z)
-        int itl = GetITL(row.r);
+        int itl = GetStreamID(GetITL(row.r), GetIZ(row.z));
         
         PreSpike_Time.push_back(time);
         PreSpike_Stream.push_back(itl);
@@ -927,6 +941,63 @@ void ReadFromRoot(TTree* tree, long int id_event_value){
 //To read Monte Carlo events
 //TODO work in progress
 
+void ReadFromMia(TTree* IT, TTree* OT, long int id_event_value){
+    Reset_hits();
+  
+    float r;
+    float phi;
+    float id;
+    float id_event;
+    float zeta;
+
+    IT->SetBranchAddress("cluster_R", &r);
+    IT->SetBranchAddress("cluster_phi", &phi);
+    IT->SetBranchAddress("cluster_type", &id);
+    IT->SetBranchAddress("eventID", &id_event);
+    IT->SetBranchAddress("cluster_z", &zeta);
+
+    pclass = 0;
+
+    // Loop over entries and find rows with the specified id_event value
+    for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
+        IT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
+            last_row_event = i;
+            break;
+        }
+        if(static_cast<int>(id)==1){
+            id = SIG;
+        }
+        else id=BGR;
+        
+        hit_pos.emplace_back(r,zeta, phi, static_cast<int>(id));
+    }
+    
+    //OUT Tracker
+    
+    OT->SetBranchAddress("cluster_R", &r);
+    OT->SetBranchAddress("cluster_phi", &phi);
+    OT->SetBranchAddress("cluster_type", &id);
+    OT->SetBranchAddress("eventID", &id_event);
+    OT->SetBranchAddress("cluster_z", &zeta);
+
+
+    for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
+        OT->GetEntry(i);
+        if (static_cast<long int>(id_event)!=id_event_value) {
+            last_row_event_OT = i;
+            break;
+        }
+        if(static_cast<int>(id)==1){
+            id = SIG;
+        }
+        else id=BGR;
+        
+        hit_pos.emplace_back(r,zeta, phi, static_cast<int>(id));
+    }
+
+    N_part = 2;
+}
 
 //Legge i dati di MIA
 void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
@@ -986,184 +1057,186 @@ void ReadFromRoot(TTree* IT, TTree* OT,  long int id_event_value){
 }
 
 
-// //Preprocess Mia datas
-void PreprocessRoot(TTree* IT, TTree* OT,  long int id_event_value, TTree* TT, int bin_r, int bin_z){
+// //Preprocess Mia datas-> crea più trees del previsto, funziona ma va miglioata
+// void PreprocessRoot(TTree* IT, TTree* OT,  long int id_event_value, TTree* TT, int bin_r, int bin_z){
 
-    Reset_hits();
+//     Reset_hits();
 
-    float r_write, z_write;
-    float phi_write;
-    float id_write;
-    float id_event_write;
-    float pclass_write;
+//     float r_write, z_write;
+//     float phi_write;
+//     float id_write;
+//     float id_event_write;
+//     float pclass_write;
 
-    double delta_r_IT = max_R_IT/bin_r;
-    double delta_z_IT = max_Z_IT/bin_z;
+//     double delta_r_IT = max_R_IT/bin_r;
+//     double delta_z_IT = max_Z_IT/bin_z;
 
-    double delta_r_OT = max_R_OT/bin_r;
-    double delta_z_OT = max_Z_OT/bin_z;
-
-
-    TT->Branch("r", &r_write);
-    TT->Branch("z", &z_write);
-    TT->Branch("phi", &phi_write);
-    TT->Branch("id", &id_write);
-    TT->Branch("id_event", &id_event_write);
-    TT->Branch("pclass", &pclass_write);
+//     double delta_r_OT = max_R_OT/bin_r;
+//     double delta_z_OT = max_Z_OT/bin_z;
 
 
+//     TT->Branch("r", &r_write);
+//     TT->Branch("z", &z_write);
+//     TT->Branch("phi", &phi_write);
+//     TT->Branch("id", &id_write);
+//     TT->Branch("id_event", &id_event_write);
+//     TT->Branch("pclass", &pclass_write);
 
-    //-----------------------READ------------------------------
-    //Creating variables
-    float r, phi, z;
-    float id;
-    float id_event;
 
-    cout << "Create file 2" << endl;
-    IT->SetBranchAddress("cluster_R", &r);
-    IT->SetBranchAddress("cluster_z", &z);
-    IT->SetBranchAddress("cluster_phi", &phi);
-    IT->SetBranchAddress("cluster_type", &id);
-    IT->SetBranchAddress("eventID", &id_event);
-    pclass = 0;
+
+//     //-----------------------READ------------------------------
+//     //Creating variables
+//     float r, phi, z;
+//     float id;
+//     float id_event;
+
+//     cout << "Create file 2" << endl;
+//     IT->SetBranchAddress("cluster_R", &r);
+//     IT->SetBranchAddress("cluster_z", &z);
+//     IT->SetBranchAddress("cluster_phi", &phi);
+//     IT->SetBranchAddress("cluster_type", &id);
+//     IT->SetBranchAddress("eventID", &id_event);
+//     pclass = 0;
 
  
-    // Loop over entries and find rows with the specified id_event value
-    for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
-        IT->GetEntry(i);
-        if (static_cast<long int>(id_event)!=id_event_value) {
-            cout << "TEST" << endl;
-            cout << " -------- " << id_event << "  " << id_event_value << endl;
-            last_row_event = i;
-            break;
-        }
-        if(static_cast<int>(id)==1){
-            id = SIG;
-        }
-        else id=BGR;
+//     // Loop over entries and find rows with the specified id_event value
+//     for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
+//         IT->GetEntry(i);
+//         if (static_cast<long int>(id_event)!=id_event_value) {
+//             cout << "TEST" << endl;
+//             cout << " -------- " << id_event << "  " << id_event_value << endl;
+//             last_row_event = i;
+//             break;
+//         }
+//         if(static_cast<int>(id)==1){
+//             id = SIG;
+//         }
+//         else id=BGR;
 
-        //convert R in id
-        r_write = (int) (r / delta_r_IT); 
+//         //convert R in id
+//         r_write = (int) (r / delta_r_IT); 
         
-        //convert Z in id
-        z_write = (int)  ((z + max_Z_IT) / delta_z_IT);
-        cout<<z_write<<endl;
-        //fill data
-        phi_write = phi;
-        id_write = id;
-        id_event_write = id_event;
-        pclass_write = pclass;
+//         //convert Z in id
+//         z_write = (int)  ((z + max_Z_IT) / delta_z_IT);
+//         cout<<z_write<<endl;
+//         //fill data
+//         phi_write = phi;
+//         id_write = id;
+//         id_event_write = id_event;
+//         pclass_write = pclass;
 
-        TT->Fill();
+//         TT->Fill();
 
 
-        hit_pos.emplace_back(r, 0, phi, static_cast<int>(id));
-    }
+//         hit_pos.emplace_back(r, 0, phi, static_cast<int>(id));
+//     }
     
-    //OUT Tracker
+//     //OUT Tracker
     
-    OT->SetBranchAddress("cluster_R", &r);
-    OT->SetBranchAddress("cluster_z", &z);
-    OT->SetBranchAddress("cluster_phi", &phi);
-    OT->SetBranchAddress("cluster_type", &id);
-    OT->SetBranchAddress("eventID", &id_event);
+//     OT->SetBranchAddress("cluster_R", &r);
+//     OT->SetBranchAddress("cluster_z", &z);
+//     OT->SetBranchAddress("cluster_phi", &phi);
+//     OT->SetBranchAddress("cluster_type", &id);
+//     OT->SetBranchAddress("eventID", &id_event);
 
-    for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
-        OT->GetEntry(i);
-        if (static_cast<long int>(id_event)!=id_event_value) {
-            last_row_event_OT = i;
-            break;
-        }
-        if(static_cast<int>(id)==1){
-            id = SIG;
-        }
-        else id=BGR;
+//     for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
+//         OT->GetEntry(i);
+//         if (static_cast<long int>(id_event)!=id_event_value) {
+//             last_row_event_OT = i;
+//             break;
+//         }
+//         if(static_cast<int>(id)==1){
+//             id = SIG;
+//         }
+//         else id=BGR;
         
 
-        //convert R in id
-        r_write = (int) (r / delta_r_OT); 
+//         //convert R in id
+//         r_write = (int) (r / delta_r_OT); 
 
         
-        //convert Z in id
-        z_write = (int) ((z + max_Z_OT) / delta_z_OT);
-        cout << "ot " << z_write <<endl;
-        //fill data
-        phi_write = phi;
-        id_write = id;
-        id_event_write = id_event;
-        pclass_write = pclass;
+//         //convert Z in id
+//         z_write = (int) ((z + max_Z_OT) / delta_z_OT);
+//         cout << "ot " << z_write <<endl;
+//         //fill data
+//         phi_write = phi;
+//         id_write = id;
+//         id_event_write = id_event;
+//         pclass_write = pclass;
 
-        TT->Fill();
+//         TT->Fill();
         
-        hit_pos.emplace_back(r,0, phi, static_cast<int>(id));
-    }
-    TT->Write(); 
-    N_part = 2;  
+//         hit_pos.emplace_back(r,0, phi, static_cast<int>(id));
+//     }
+//     TT->Write(); 
+//     N_part = 2;  
 
-}
-
-void Test(const char* filename=""){
-    TFile* file = TFile::Open(filename, "READ");
-    if (!file || file->IsZombie()) {
-        cerr << "Error: Cannot open file " << filename << endl;
-        return;
-    }
-
-    // Access the "clusterValidIT" directory
-    TDirectoryFile* dirIT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidIT"));
-    TDirectoryFile* dirOT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidOT"));
-
-    if (!dirIT) {
-        cerr << "Error: Cannot access directory clusterValidIT" << endl;
-        file->Close();
-        return;
-    }
-
-    if (!dirOT) {
-        cerr << "Error: Cannot access directory clusterValidOT" << endl;
-        file->Close();
-        return;
-    }
-
-    // Access the "tree" in the "clusterValidIT" directory
-    TTree* IT = dynamic_cast<TTree*>(dirIT->Get("tree"));
-    TTree* OT = dynamic_cast<TTree*>(dirOT->Get("tree;1"));
-
-    if (!IT) {
-        cerr << "Error: Cannot access tree in clusterValidIT" << endl;
-        file->Close();
-        return;
-    }
-
-    if (!OT) {
-        cerr << "Error: Cannot access tree in clusterValidOT" << endl;
-        file->Close();
-        return;
-    }
-
-    //-----------------------WRITE------------------------------------
-    cout << "Create file" << endl;
-    TFile* fileW = TFile::Open("Defq.root", "RECREATE");
-    if (!file || fileW->IsZombie()) {
-        cerr << "Errore nell'apertura o creazione del file ROOT." << endl;
-        return;
-    }
+// }
 
 
+//Serviva per testare il preprocess-> Funziona male come il preprocess
+// void Test(const char* filename=""){
+//     TFile* file = TFile::Open(filename, "READ");
+//     if (!file || file->IsZombie()) {
+//         cerr << "Error: Cannot open file " << filename << endl;
+//         return;
+//     }
 
-    cout << "Create tree 3" << endl;
-    TTree *TT = new TTree("TT", "TT");
-    TT->SetDirectory(fileW);
-    //--------------------------------------------
+//     // Access the "clusterValidIT" directory
+//     TDirectoryFile* dirIT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidIT"));
+//     TDirectoryFile* dirOT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidOT"));
 
-    cout << "Read first event " << endl;
-    PreprocessRoot(IT, OT, 1,TT, 100, 300);
+//     if (!dirIT) {
+//         cerr << "Error: Cannot access directory clusterValidIT" << endl;
+//         file->Close();
+//         return;
+//     }
 
-    cout << "Here" <<endl;
-    fileW->Close();
-    file->Close();
+//     if (!dirOT) {
+//         cerr << "Error: Cannot access directory clusterValidOT" << endl;
+//         file->Close();
+//         return;
+//     }
+
+//     // Access the "tree" in the "clusterValidIT" directory
+//     TTree* IT = dynamic_cast<TTree*>(dirIT->Get("tree"));
+//     TTree* OT = dynamic_cast<TTree*>(dirOT->Get("tree;1"));
+
+//     if (!IT) {
+//         cerr << "Error: Cannot access tree in clusterValidIT" << endl;
+//         file->Close();
+//         return;
+//     }
+
+//     if (!OT) {
+//         cerr << "Error: Cannot access tree in clusterValidOT" << endl;
+//         file->Close();
+//         return;
+//     }
+
+//     //-----------------------WRITE------------------------------------
+//     cout << "Create file" << endl;
+//     TFile* fileW = TFile::Open("Defq.root", "RECREATE");
+//     if (!file || fileW->IsZombie()) {
+//         cerr << "Errore nell'apertura o creazione del file ROOT." << endl;
+//         return;
+//     }
+
+
+
+//     cout << "Create tree 3" << endl;
+//     TTree *TT = new TTree("TT", "TT");
+//     TT->SetDirectory(fileW);
+//     //--------------------------------------------
+
+//     cout << "Read first event " << endl;
+//     PreprocessRoot(IT, OT, 1,TT, 100, 300);
+
+//     cout << "Here" <<endl;
+//     fileW->Close();
+//     file->Close();
     
-}
+// }
 
 
 // -----------------------------------------------------------------------------------------------------------------------------------------
@@ -1621,6 +1694,51 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     int ind_qbest     = 0;
     
     //Open the root data file if provided
+    TFile* file = TFile::Open(rootInput, "READ");
+    if (!file || file->IsZombie()) {
+        cerr << "Error: Cannot open file " << rootInput << endl;
+        return;
+    }
+
+    // Access the "clusterValidIT" directory
+    TDirectoryFile* dirIT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidIT"));
+    TDirectoryFile* dirOT = dynamic_cast<TDirectoryFile*>(file->Get("clusterValidOT"));
+
+    if (!dirIT) {
+        cerr << "Error: Cannot access directory clusterValidIT" << endl;
+        file->Close();
+        return;
+    }
+
+    if (!dirOT) {
+        cerr << "Error: Cannot access directory clusterValidOT" << endl;
+        file->Close();
+        return;
+    }
+
+    // Access the "tree" in the "clusterValidIT" directory
+    TTree* IT = dynamic_cast<TTree*>(dirIT->Get("tree"));
+    TTree* OT = dynamic_cast<TTree*>(dirOT->Get("tree;1"));
+
+    if (!IT) {
+        cerr << "Error: Cannot access tree in clusterValidIT" << endl;
+        file->Close();
+        return;
+    }
+
+    if (!OT) {
+        cerr << "Error: Cannot access tree in clusterValidOT" << endl;
+        file->Close();
+        return;
+    }
+
+    IT->SetMaxVirtualSize(250000000);
+    IT->LoadBaskets();
+
+    OT->SetMaxVirtualSize(250000000);
+    OT->LoadBaskets();
+
+    /*
     TFile *file = TFile::Open(rootInput, "READ");
     TTree *tree;
     if (!file || file->IsZombie()) {
@@ -1644,6 +1762,8 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
             tree->LoadBaskets();
         }
     }
+    */
+    
    
     do {
 
@@ -1657,7 +1777,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
 
         //load data from the root file if provided
         if(rootInput){
-            ReadFromRoot(tree, ievent);
+            ReadFromMia(IT, OT, ievent);
         }
         else{
         // Hit generation

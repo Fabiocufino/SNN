@@ -9,14 +9,19 @@
 //Tracker geometry and physical constants
 // ------------------------------------------- 
 static float Bfield                  = 3.8;                              // Tesla
-static const short int N_TrackingLayers     = 10;
-static float strip_r[N_TrackingLayers] = {3.0, 6.15, 10.45, 14.65, 24.9, 37.1678, 52.27, 68.7, 86.0, 108.3};//radial positions of the layers from the origin
+static const short int N_TrackingLayers     = 50;
+static float strip_r[N_TrackingLayers] = {32, 64, 107, 149, 250, 370, 525, 670, 710, 845, 876, 1068, 1099};//radial positions of the layers from the origin
+//static float strip_r[N_TrackingLayers] = {3.0, 6.15, 10.45, 14.65, 24.9, 37.1678, 52.27, 68.7, 86.0, 108.3};//radial positions of the layers from 
+//static float confidence_r_left[N_TrackingLayers] = {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1};
+//static float confidence_r_right[N_TrackingLayers] = {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1};
+static float confidence_r_left[N_TrackingLayers] = {7, 6, 7, 8, 40, 40, 30, 10, 10, 5, 6, 5, 4};
+static float confidence_r_right[N_TrackingLayers] = {7, 6, 7, 8, 40, 40, 30, 10, 10, 5, 6, 5, 4};
 static const int MaxStrips            = 10000;                            //Discretization of the phi angle (retained only for noise calculation)
 static int N_strips                   = 10000;
 static float pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
 static float confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
-static const int N_ZetaLayers              = 2;
-static const int N_InputStreams = N_TrackingLayers * N_ZetaLayers;
+static const int N_ZetaLayers              = 50;
+static const int N_InputStreams = (N_TrackingLayers) * N_ZetaLayers ;
 // ------------------------------------------- 
 //Time encoding constants
 // ------------------------------------------- 
@@ -61,11 +66,11 @@ static const int MaxStreams           = MaxNeurons + N_TrackingLayers*N_ZetaLaye
 // -------------------------------------------     
 struct Hit
 {
-    int r, z;
-    float phi;
+    float z;
+    float r, phi;
     short int id;
 
-    Hit(int r_, int z_, float phi_, short int id_)
+    Hit(float r_, float z_, float phi_, short int id_)
         : r(r_), z(z_), phi(phi_), id(id_)
     {
     }
@@ -75,8 +80,8 @@ static vector<Hit> hit_pos;
 
 static float bisection_window        = (M_PI/5);                        //interval of confidence used in the bisection method to find the interceptions between layers and tracks
 static float bisection_precision     = 1.e-04;                          //[rad]
-static long int last_row_event        = 0;                               //last row associated to the previous event read
-static long int last_row_event_OT     = 0;
+static long int last_row_event        = 1;                               //last row associated to the previous event read
+static long int last_row_event_OT     = 1;
 static const int MaxClasses           = 20;
 static int pclass;
 
@@ -88,14 +93,17 @@ ofstream fout_h_bg("h_bg.txt");
 ofstream fout_h_sig("h_sig.txt");
 
 
-
-
-
-
 static double max_R_IT = 300.;
 static double max_Z_IT = 3000.;
-
 static double max_R_OT = 1200.;
 static double max_Z_OT = 3000.;
+
+
+
+
+static double z_range = 6000;
+static double z_strip = z_range / N_ZetaLayers;
+static double max_R = 1200.;
+static double r_strip = max_R/N_TrackingLayers;
 
 #endif // SNNT_CONSTANTS_H
