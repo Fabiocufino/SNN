@@ -20,7 +20,7 @@ static const int MaxStrips            = 10000;                            //Disc
 static int N_strips                   = 10000;
 static float pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
 static float confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
-static const int N_ZetaLayers              = 50;
+static const int N_ZetaLayers              = 1;
 static const int N_InputStreams = (N_TrackingLayers) * N_ZetaLayers ;
 // ------------------------------------------- 
 //Time encoding constants
@@ -46,7 +46,7 @@ static const double tau_s             = 0.25e-09;                        // syna
 static double K1                      = 2.;                              // constants to tune post-synaptic shape
 static double K2                      = 4.;                              // see above
 static double IE_Pot_const            = 2.5;                             // Constant for IE modeling
-static double Threshold[2]            = {5.5,3.5};                       // Neuron threshold in arbitrary units; in paper it is 550V but they have 1000 channels, 100x ours
+static double Threshold[2]            = {15.,10.};                       // Neuron threshold in arbitrary units; in paper it is 550V but they have 1000 channels, 100x ours
 static double alpha                   = 0.25;                            // 0.25; // factor tuning inhibition strength
 static double L1inhibitfactor         = 1.;                              // multiplier for L1 inhibits
 static const double MaxDeltaT         = 7.*tau_m;                        // time window wherein pre-synaptic, inhibition, and post-synaptic kernels affect neuron potential
@@ -55,7 +55,7 @@ static const double tau_minus         = 3.37e-09;                        // [s]
 static double IPSP_dt_dilation        = 1.;                              // shape factor of exponential IPSP signal
 static const double a_plus            = 0.03125;                         // for model of EPSP
 static const double a_minus           = 0.0265625;                       // 0.85*a_plus;
-static double MaxFactor               = 0.2;                             // Initial factor of excursion of parameters for optimization
+static double MaxFactor               = 0.2;                             // Initial factor of excursion of parameters for optimization it was 0.2
 static double eff_target              = 0.9;
 static double acc_target              = 0.05;
 static bool learnDelays = false;

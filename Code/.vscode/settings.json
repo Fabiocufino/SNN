@@ -2,6 +2,15 @@
     "files.associations": {
         "SNNT13.C": "cpp",
         "plot.C": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "Generate.C": "cpp",
+        "vector": "cpp",
+        "array": "cpp",
+        "compare": "cpp",
+        "functional": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "algorithm": "cpp"
     }
 }
