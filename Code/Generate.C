@@ -20,7 +20,7 @@
 #include <string>
 
 //in the future 18
-static const int NFile = 1;
+static const int NFile = 6;
 static TRandom3 * myRNG = new TRandom3(23);
 static TFile *files[NFile];
 static TDirectory *dirIT_list[NFile];
@@ -172,7 +172,7 @@ pair<std::vector<Event>, std::vector<Event>> GetEventFromMia(TTree *IT, TTree *O
 
     
     if(count<3){
-        cout << "Problema: " << new_id_event << "  " << id_event << " " << first_row_event_OT << endl;
+        cout << "Problema: " << new_id_event << "  " << id_event << " " << first_row_event_OT << " " << id_event_value << endl;
         for (int i = first_row_event_OT; i < OT->GetEntries(); i++)
     {
         OT->GetEntry(i);
@@ -204,11 +204,11 @@ void ComputeCumulative(TTree *IT, TTree *OT){
     P_cum = new double[N_RandEvents];
 
     IT->GetEntry(0);
-    P_cum[0] = sqrt(x*x + y*y + z*z)/scale;
+    P_cum[0] = sqrt(x*x + y*y  )/scale;
     for (int i = 1; i < NIT; i++)
     {
         IT->GetEntry(i);
-        P_cum[i] = P_cum[i-1] + sqrt(x*x + y*y + z*z)/scale;
+        P_cum[i] = P_cum[i-1] + sqrt(x*x + y*y  )/scale;
     }
     
     //Outer Traker
@@ -219,7 +219,7 @@ void ComputeCumulative(TTree *IT, TTree *OT){
     for (int i = 0; i < NOT; i++)
     {
         OT->GetEntry(i);
-        P_cum[NIT+i] = P_cum[NIT+i-1] + sqrt(x*x + y*y + z*z)/scale;
+        P_cum[NIT+i] = P_cum[NIT+i-1] + sqrt(x*x + y*y  )/scale;
     }
 }
 
@@ -227,7 +227,6 @@ pair<std::vector<Event>, std::vector<Event>> GetBackgroundFromMia(TTree *IT, TTr
 {
     vector<Event> event_IT = {};
     vector<Event> event_OT = {};
-
 
     float x, y, z;
     float r, phi, eta;
@@ -281,16 +280,20 @@ pair<std::vector<Event>, std::vector<Event>> GetBackgroundFromMia(TTree *IT, TTr
     return make_pair(event_IT, event_OT);
 }
 
-void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", float bkg_rate = 50,  string folder = "/home/ema/Documents/thesis/DATA/MuGun/", string file_name = "clusters_ntuple_")
+void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", float bkg_rate = 50,  string folder = "/Users/Fabio/Desktop/DATA/MuGun/", string file_name = "clusters_ntuple.root")
 {   
+
     //momentaneamente j = 0 per gestire solo i file a 1GeV
-    for (int j=0; j < 1; j++)
+    int combind = 0;
+    for (int j=0; j < 3; j++)
     {   
         //open all root files and TTrees inside
         //momentaneamente solo 1
-        for (int i = 0; i < 1; i++)
+        for (int i = 0; i < 2; i++)
         {
-            string rootInput = folder + P_name[j] + "GeV/SingleParticleEta0p4/" + file_name + to_string(i)+".root ";
+            string rootInput;
+            if(i%2==0) rootInput = folder + P_name[j] + "GeV/SingleParticleEta0p4/" + file_name;
+            else rootInput = folder + P_name[j] + "GeV/SingleParticleEta0p4/plus/" + file_name;
             TFile *file = TFile::Open(rootInput.c_str(), "READ");
             if (!file || file->IsZombie())
             {
@@ -343,13 +346,15 @@ void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", floa
             OT->SetMaxVirtualSize(250000000);
             OT->LoadBaskets();
 
-            IT_list[i] = IT;
-            OT_list[i] = OT;
+            IT_list[combind] = IT;
+            OT_list[combind] = OT;
             
             float id_event;
             IT->SetBranchAddress("eventID", &id_event);
-            N_Events_list[i] = IT->GetEntry(IT->GetEntries()-1);
-        }
+           GetEntry IT->(IT->GetEntries()-1);
+            N_Events_list[combind] = (int) id_event;
+            combind++;
+        }   
     }
     
     //opening output file
@@ -404,12 +409,14 @@ void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", floa
     {
         if(i%(N_events/10)==0)
             cout << i/(N_events/10)*10 << "%" <<endl;
+        //cout << i << endl;
         //generate background
         //cout << "Getting the background" << endl;
         pair <vector<Event>, vector<Event>> event = GetBackgroundFromMia(IT_list[0], OT_list[0], i+1, bkg_rate);
         vector<Event> event_IT = event.first;
         vector<Event> event_OT = event.second;
         
+        //cout << "Gen BKG" << endl;
         //generate only background or signal with 50% of probability
         bool signal = (myRNG->Uniform())<0.5;
         if (signal){
@@ -418,10 +425,13 @@ void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", floa
             int ID_file =(int) (myRNG->Uniform(NFile-epsilon));          
             int ID_event =(int) (myRNG->Uniform(N_Events_list[ID_file]-epsilon))+1;
             float pclass = ID_file;
-            //cout << ID_file << endl;
+            //cout << ID_file << " " << ID_event << endl;
+            //cout << IT_list[ID_file] << " " << OT_list[ID_file] << endl;
+
             pair <vector<Event>, vector<Event>> event_sig = GetEventFromMia(IT_list[ID_file], OT_list[ID_file], ID_event, pclass, i+1);
             vector<Event> event_IT_sig = event_sig.first;
             vector<Event> event_OT_sig = event_sig.second;
+
 
             //merge vectors
             event_IT.insert(event_IT.end(), event_IT_sig.begin(), event_IT_sig.end());

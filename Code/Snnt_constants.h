@@ -20,7 +20,7 @@ static const int MaxStrips            = 10000;                            //Disc
 static int N_strips                   = 10000;
 static float pitch_rad               = 2.0 * M_PI / N_strips;            //[rad]
 static float confidence_r            = 0.1;                              // Confidence used to convert the radial position to the id of the strip in cm 
-static const int N_ZetaLayers              = 1;
+static const int N_ZetaLayers              = 50;
 static const int N_InputStreams = (N_TrackingLayers) * N_ZetaLayers ;
 // ------------------------------------------- 
 //Time encoding constants
@@ -101,7 +101,7 @@ static double max_Z_OT = 3000.;
 
 
 
-static double z_range = 6000;
+static double z_range = 1000;
 static double z_strip = z_range / N_ZetaLayers;
 static double max_R = 1200.;
 static double r_strip = max_R/N_TrackingLayers;

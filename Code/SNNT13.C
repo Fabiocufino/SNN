@@ -472,7 +472,6 @@ int GetITL(float r_hit){
 }
 
 int GetIZ(float z){
-    return 0;
     return (int)  ((z + z_range/2) / z_strip);
 }
 
@@ -1067,7 +1066,7 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
 // ------------
 void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInput = nullptr, double CF = 1., double Occ=0.000390625, 
                    int TrainingCode=7, bool ReadPars=false,
-                   double Thresh0=5, double Thresh1=5, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
+                   double Thresh0=15, double Thresh1=10, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
                    double IEPC=2.5, double ipspdf=1.0) {
 
     // Pass parameters:

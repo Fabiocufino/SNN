@@ -19,6 +19,7 @@
         "locale": "cpp",
         "iosfwd": "cpp",
         "string": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "stdexcept": "cpp"
     }
 }
