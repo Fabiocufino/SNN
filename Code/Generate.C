@@ -28,6 +28,7 @@ static TDirectory *dirOT_list[NFile];
 static TTree *IT_list[NFile];
 static TTree *OT_list[NFile];
 static int N_Events_list[NFile];
+static vector<int> N_Events_list_id[NFile];
 static string P_name[3]= {"1", "3", "10"};
 static double *P_cum;
 static int NIT;
@@ -280,7 +281,7 @@ pair<std::vector<Event>, std::vector<Event>> GetBackgroundFromMia(TTree *IT, TTr
     return make_pair(event_IT, event_OT);
 }
 
-void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", float bkg_rate = 50,  string folder = "/Users/Fabio/Desktop/DATA/MuGun/", string file_name = "clusters_ntuple.root")
+void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", float bkg_rate = 50,  string folder = "/home/ema/Documents/thesis/DATA/MuGun/", string file_name = "clusters_ntuple.root")
 {   
 
     //momentaneamente j = 0 per gestire solo i file a 1GeV
@@ -351,8 +352,13 @@ void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", floa
             
             float id_event;
             IT->SetBranchAddress("eventID", &id_event);
-           GetEntry IT->(IT->GetEntries()-1);
+            int size = IT->GetEntries();
+            IT->GetEntry(size-1);
             N_Events_list[combind] = (int) id_event;
+            for(int i = 0; i < size; i++){
+                IT->GetEntry(i);
+                N_Events_list_id[combind].push_back(id_event);
+            }
             combind++;
         }   
     }
@@ -422,8 +428,20 @@ void GenerateRootFromMia(int N_events = 100000, string outRoot="100k.root", floa
         if (signal){
             //add signal to the event
             //select random an event from a random file
-            int ID_file =(int) (myRNG->Uniform(NFile-epsilon));          
+            int ID_file = (int) (myRNG->Uniform(NFile-epsilon));
+            //int ID_file;
+            /*
+             do{
+                ID_file =(int) (myRNG->Uniform(NFile-epsilon));
+
+            }while(N_Events_list_id[ID_file].size()==0);
+            */
+           
+            
             int ID_event =(int) (myRNG->Uniform(N_Events_list[ID_file]-epsilon))+1;
+            //int ID_event_id = (int) (myRNG)->Uniform(N_Events_list_id[ID_file].size()-epsilon);
+            //int ID_event = N_Events_list_id[ID_file][ID_event_id];
+            //N_Events_list_id[ID_file].erase(N_Events_list_id[ID_file].begin()+ID_event_id);
             float pclass = ID_file;
             //cout << ID_file << " " << ID_event << endl;
             //cout << IT_list[ID_file] << " " << OT_list[ID_file] << endl;

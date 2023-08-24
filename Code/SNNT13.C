@@ -76,7 +76,8 @@ static double IEPC_best;
 static double IPSPdf_best;
 static int indfile;
 static char progress[53]      = "[--10%--20%--30%--40%--50%--60%--70%--80%--90%-100%]"; // Progress bar
-     
+static long int ievent;
+static long int NROOT = 100000;
 
 // Sorting vector by column
 bool sortcol(const vector<double>& v1, const vector<double>& v2)
@@ -1032,7 +1033,7 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
         else type = BGR;
 
         phi+=M_PI;
-
+        
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
     
@@ -1055,8 +1056,10 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
         }
         else type=BGR;
         
-        phi+=M_PI;
-
+        //phi += M_PI;
+        //cout << 1.*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT)) << endl;
+        phi+=M_PI+2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
+        if(phi>=2.*M_PI) phi-= 2.*M_PI;
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
 }
@@ -1064,10 +1067,12 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
 // ------------
-void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInput = nullptr, double CF = 1., double Occ=0.000390625, 
-                   int TrainingCode=7, bool ReadPars=false,
-                   double Thresh0=15, double Thresh1=10, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
-                   double IEPC=2.5, double ipspdf=1.0) {
+void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullptr,  bool batch=false, double CF = 1., 
+                   double Thresh0=15, double Thresh1=10, double _MaxFactor = 0.2, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
+                   double IEPC=2.5, double ipspdf=1.0, double _MaxDelay = 0.1e-9, double _tau_m = 1e-09, double _tau_s = 0.25e-09, 
+                   double _tau_plus = 1.68e-09, double _tau_minus = 3.37e-09, double _a_plus = 0.03125, double _a_minus = 0.03125, 
+                   int N_cl=6, 
+                   int TrainingCode=5,bool ReadPars=false, double Occ=0.000390625, long int _NROOT = 100000) {
 
     // Pass parameters:
     // ----------------__
@@ -1128,13 +1133,13 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     // -----------------------------------------------------------------------------------------------
 
     // Pass parameters can't update static values, so we need to reassign the latter
+    if(batch) gROOT->SetBatch(kTRUE);
+    
     N_events          = N_ev;
     N_epochs          = N_ep;
     N_neuronsL[0]     = NL0;
     N_neuronsL[1]     = NL1;
-    N_classes         = N_cl;
     ConnectedFraction = CF;
-    Occupancy         = Occ;
     Threshold[0]      = Thresh0;
     Threshold[1]      = Thresh1;
     alpha             = a;
@@ -1144,13 +1149,27 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     K2                = k2;
     IE_Pot_const      = IEPC;
     IPSP_dt_dilation  = ipspdf;
+    MaxDelay          = _MaxDelay;
+    tau_m             = _tau_m;
+    tau_s             = _tau_s;
+    tau_plus          = _tau_plus;
+    tau_minus         = _tau_minus;
+    a_plus            = _a_plus;
+    a_minus           = _a_minus;
+    MaxFactor        = _MaxFactor;
+    NROOT = _NROOT;
+
     N_neurons = N_neuronsL[0] + N_neuronsL[1];
     N_streams = N_InputStreams + N_neuronsL[0];
     NevPerEpoch = N_events/N_epochs;
+    N_classes         = N_cl;
+    Occupancy         = Occ;
+    
     // Assign meta-learning booleans
     update9           = false;
     updateDelays      = false;
     updateConnections = false;
+
     if (TrainingCode/4>0) {
         update9 = true;
         TrainingCode-=4;
@@ -1510,7 +1529,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
     if (block<1) doprogress = false;
     if (doprogress) cout << "         " << progress[0];
     int currchar      = 1;
-    long int ievent   = 0;
+    ievent   = 0;
     int iev_thisepoch = 0;
     int iepoch        = 0;
     int ind_qbest     = 0;
@@ -1598,7 +1617,11 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, int N_cl, char* rootInp
 
         //load data from the root file if provided
         if(rootInput){
-            ReadFromProcessed(IT, OT, ievent);
+            if(ievent%NROOT==0){
+                last_row_event=0;
+                last_row_event_OT = 0;
+            }
+            ReadFromProcessed(IT, OT, ievent%NROOT);
         }
         else{
         // Hit generation
