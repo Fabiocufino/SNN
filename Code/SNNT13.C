@@ -456,6 +456,9 @@ int Simulate_sighits () {
 // Encode hits in spike stream / we do it in a single stream with code for layer
 // -----------------------------------------------------------------------------
 int GetITL(float r_hit){
+    if (r_hit < 0) r_hit = 0;
+    if (r_hit > max_R) r_hit = max_R-epsilon;
+
     return (int)(r_hit / r_strip); 
     
     /*
@@ -473,7 +476,11 @@ int GetITL(float r_hit){
 }
 
 int GetIZ(float z){
-    return (int)  ((z + z_range/2) / z_strip);
+    double tmp = (z + z_range/2.);
+    if (tmp<0) tmp = 0;
+    else if(tmp > z_range) tmp = z_range -epsilon;
+    
+    return (int) (tmp/ z_strip);
 }
 
 int GetStreamID(int r, int z){
@@ -1021,18 +1028,21 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
     // Loop over entries and find rows with the specified id_event value
     for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
         IT->GetEntry(i);
+        
         if (static_cast<long int>(id_event)!=id_event_value) {
             last_row_event = i;
             break;
         }
+        phi+=M_PI;
         if(static_cast<int>(type)==1){
             type = SIG;
             pclass = (int) cluster_pclass;
             N_part=1;
+            phi+=2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
         }
         else type = BGR;
 
-        phi+=M_PI;
+        if(phi>=2.*M_PI) phi-= 2.*M_PI;
         
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
@@ -1046,19 +1056,19 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
     OT->SetBranchAddress("cluster_type", &type);
 
     for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
-        OT->GetEntry(i);
+        OT->GetEntry(i);   
         if (static_cast<long int>(id_event)!=id_event_value) {
             last_row_event_OT = i;
             break;
         }
+        phi += M_PI;
         if(static_cast<int>(type)==1){
+            phi+=2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
             type = SIG;
         }
         else type=BGR;
         
-        //phi += M_PI;
         //cout << 1.*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT)) << endl;
-        phi+=M_PI+2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
         if(phi>=2.*M_PI) phi-= 2.*M_PI;
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
@@ -1067,12 +1077,12 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
 // ------------
-void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullptr,  bool batch=false, double CF = 1., 
+void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullptr, bool batch=false, double CF = 1., 
                    double Thresh0=15, double Thresh1=10, double _MaxFactor = 0.2, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
                    double IEPC=2.5, double ipspdf=1.0, double _MaxDelay = 0.1e-9, double _tau_m = 1e-09, double _tau_s = 0.25e-09, 
                    double _tau_plus = 1.68e-09, double _tau_minus = 3.37e-09, double _a_plus = 0.03125, double _a_minus = 0.03125, 
                    int N_cl=6, 
-                   int TrainingCode=5,bool ReadPars=false, double Occ=0.000390625, long int _NROOT = 100000) {
+                   int TrainingCode=5,bool ReadPars=false, double Occ=0.000390625, ,  long int _NROOT = 5000) {
 
     // Pass parameters:
     // ----------------__
@@ -1190,7 +1200,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     }
     if (N_ev/N_ep<10000) {
         cout << "  Too few events per epoch. Set to " << 10000*N_ep << endl;
-        N_ev = 10000*N_ep;
+        //N_ev = 10000*N_ep;
     }
     if (N_ep<1) {
         cout << "  Invalid N_epochs = " << N_ep << ". Set to 1." << endl;

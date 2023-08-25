@@ -11,6 +11,10 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "utility": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "draw_scatter_plot.C": "cpp",
+        "scatter_v2.C": "cpp",
+        "numbers": "cpp",
+        "draw_histrograms.C": "cpp"
     }
 }
