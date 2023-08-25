@@ -101,7 +101,7 @@ static double max_Z_OT = 3000.;
 
 
 
-static double z_range = 1500;
+static double z_range = 1000;
 static double z_strip = z_range / N_ZetaLayers;
 static double max_R = 1200.;
 static double r_strip = max_R/N_TrackingLayers;
