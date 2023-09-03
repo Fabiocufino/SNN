@@ -1415,7 +1415,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
         sprintf (name, "StreamsB%d", i);
         StreamsB[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
         sprintf (name, "StreamsN%d", i);
-        StreamsN[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
+        StreamsN[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_neurons, 0.5, N_neurons+0.5);
     }
 
     // Calculation of constant in excitation spike, to make it max at 1
@@ -1750,7 +1750,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
                 } else if (PreSpike_Signal[ispike]==0) {
                     StreamsB[is]->Fill(time, PreSpike_Stream[ispike]+1);
                 } else if (PreSpike_Signal[ispike]==2) {
-                    StreamsN[is]->Fill(time, PreSpike_Stream[ispike]+1);
+                    StreamsN[is]->Fill(time, PreSpike_Stream[ispike]+1-N_InputStreams);
                 }
             }
 
@@ -1831,7 +1831,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
                     if (ievent>=N_events-500.) {
                         int is = (ievent-N_events+500)/50;
                         double time = min_fire_time-(max_angle+Empty_buffer)/omega*(ievent/50)*50;
-                        if (Neuron_layer[in_first]==1) StreamsN[is]->Fill(time, N_InputStreams+in_first+1);
+                        if (Neuron_layer[in_first]==1) StreamsN[is]->Fill(time, in_first+1);
                     }
 
                     // Fill latency histogram
@@ -2558,23 +2558,39 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     delete file;
 
     // Draw histograms
-    // ---------------
-    cout << "Drawing histos" << endl;
-    TCanvas * S = new TCanvas ("S","",1000,1000);
-    S->Divide(2,5);
-    for (int i=0; i<10; i++) {
-        S->cd(i+1);
-        StreamsB[i]->SetLineColor(kRed);
-        StreamsB[i]->Draw("BOX");
 
-        
-        StreamsS[i]->SetLineColor(kBlue);
-        StreamsS[i]->Draw("BOXSAME");
+     cout << "Drawing histos" << endl;
+     TCanvas * S = new TCanvas ("S","",3000,600);
+     S->Divide(5,2);
+     for (int i=0; i<10; i++) {
+        //if i is even, drow B and S
+        if(i<5){
+            S->cd(i+1);
+            StreamsB[i]->SetLineColor(kRed);
+            StreamsB[i]->Draw("BOX");
+            StreamsS[i]->SetLineColor(kBlue);
+            StreamsS[i]->Draw("BOXSAME");
+        }
+        //if i is odd, draw B and N
+        else{
+            S->cd(i+1);
+            StreamsN[i-5]->SetLineColor(kGreen);
+            StreamsN[i-5]->Draw("BOXSAME");
+        }
 
 
-        StreamsN[i]->SetLineColor(kGreen);
-        StreamsN[i]->Draw("BOXSAME");
+    //     StreamsN[i]->SetLineColor(kGreen);
+    //     StreamsN[i]->Draw("BOXSAME");
     }
+    // ---------------
+    // //working
+    // TCanvas * N = new TCanvas ("N","",1000,1000);
+    // N->Divide(5,2);
+    // for (int i=0; i<10; i++) {
+    //     N->cd(i+1);
+    //     StreamsN[i]->SetLineColor(kGreen);
+    //     StreamsN[i]->Draw("BOX");
+    // }
 
     TCanvas * C = new TCanvas ("C", "", 1000,1000);
     C->Divide(N_classes, N_neurons);
