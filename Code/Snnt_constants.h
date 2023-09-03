@@ -93,15 +93,7 @@ ofstream fout_h_bg("h_bg.txt");
 ofstream fout_h_sig("h_sig.txt");
 
 
-static double max_R_IT = 300.;
-static double max_Z_IT = 3000.;
-static double max_R_OT = 1200.;
-static double max_Z_OT = 3000.;
-
-
-
-
-static double z_range = 1000;
+static double z_range = 1200;
 static double z_strip = z_range / N_ZetaLayers;
 static double max_R = 1200.;
 static double r_strip = max_R/N_TrackingLayers;

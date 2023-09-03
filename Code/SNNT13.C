@@ -50,7 +50,9 @@ static int N_classes;
 static int N_events;
 static int N_epochs;
 static int NevPerEpoch;
-static double ConnectedFraction;
+static double ConnectedFraction_Input_L0;
+static double ConnectedFraction_Input_L1;
+static double ConnectedFraction_L0_L1;
 static vector<double> PreSpike_Time;
 static vector<int> PreSpike_Stream;
 static vector<int> PreSpike_Signal;                      // 0 for background hit, 1 for signal hit, 2 for L1 neuron spike
@@ -249,7 +251,9 @@ void Write_Parameters () {
     // Finally, write complete set of hyperparameters and settings
     parfile << "                       L0 neurons: " << N_neuronsL[0] << endl;
     parfile << "                       L1 neurons: " << N_neuronsL[1] << endl;
-    parfile << "            Connected L0-L1 frac.: " << ConnectedFraction << endl;
+    parfile << "            Connected L0-L1 frac.: " << ConnectedFraction_L0_L1 << endl;
+    parfile << "            Connected IN-L0 frac.: " << ConnectedFraction_Input_L0 << endl;
+    parfile << "            Connected IN-L1 frac.: " << ConnectedFraction_Input_L1 << endl;
     parfile << "                  Noise per layer: " << Occupancy*N_strips << endl;
     parfile << "                    Track classes: " << N_classes << endl;
     parfile << "                     Total events: " << N_events << endl;
@@ -344,7 +348,40 @@ void Init_delays () {
 // Initialize connection map
 // -------------------------
 void Init_connection_map() {
-    for (int in=0; in<N_neurons; in++) {
+    //Setting L0 input connections
+    for (int in = 0; in < N_neuronsL[0]; in++)
+    {
+        //input connections Tracking layers -> L0
+        for (int is = 0; is < N_InputStreams; is++)
+        {
+            Void_weight[in][is] = false;
+            if(myRNG->Uniform()>ConnectedFraction_Input_L0) Void_weight[in][is] = true;
+        }
+        //input connections L0 -> L0
+        for (int is = N_InputStreams; is < N_streams; is++)
+        {
+            Void_weight[in][is] = false;
+        }
+    }
+
+    //Setting L1 input connections
+    for (int in = N_neuronsL[0]; in < N_neurons; in++)
+    {
+        //input connections Tracking layers -> L1
+        for (int is = 0; is < N_InputStreams; is++)
+        {
+            Void_weight[in][is] = false;
+            if(myRNG->Uniform()>ConnectedFraction_Input_L1) Void_weight[in][is] = true;
+        }
+        //input connections L0 -> L1
+        for (int is = N_InputStreams; is < N_streams; is++)
+        {
+            Void_weight[in][is] = false;
+            if(myRNG->Uniform()>ConnectedFraction_L0_L1) Void_weight[in][is] = true;
+        }
+    }
+    /*
+        for (int in=0; in<N_neurons; in++) {
         for (int is=0; is<N_streams; is++) {
             if (in<N_neuronsL[0] && is>=N_InputStreams) {
                 Void_weight[in][is] = true; 
@@ -355,6 +392,8 @@ void Init_connection_map() {
         }
     }
     return;
+    */
+
 }
 //DOUBT: Here, it seems that the connections between the input layer and L1 are not removed by default.
 //From the construction of the weight initialization function, it appears that such connection exists.
@@ -456,6 +495,9 @@ int Simulate_sighits () {
 // Encode hits in spike stream / we do it in a single stream with code for layer
 // -----------------------------------------------------------------------------
 int GetITL(float r_hit){
+    if (r_hit < 0) r_hit = 0;
+    if (r_hit > max_R) r_hit = max_R-epsilon;
+
     return (int)(r_hit / r_strip); 
     
     /*
@@ -473,7 +515,11 @@ int GetITL(float r_hit){
 }
 
 int GetIZ(float z){
-    return (int)  ((z + z_range/2) / z_strip);
+    double tmp = (z + z_range/2.);
+    if (tmp<0) tmp = 0;
+    else if(tmp > z_range) tmp = z_range -epsilon;
+    
+    return (int) (tmp/ z_strip);
 }
 
 int GetStreamID(int r, int z){
@@ -559,7 +605,7 @@ double Inhibitory_potential (double delta_t, int ilayer) {
     double ip = 0.;
     double thisalpha = alpha;
     if (ilayer>0) thisalpha = L1inhibitfactor*alpha; // Different inhibition in L1
-    if (delta_t>=0. && delta_t<MaxDeltaT) ip = -thisalpha * EPS_potential(delta_t); 
+    if (delta_t>=0. && delta_t<MaxDeltaT) ip = -thisalpha * Threshold[ilayer] * EPS_potential(delta_t); 
     return ip;
 }
 
@@ -1021,18 +1067,21 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
     // Loop over entries and find rows with the specified id_event value
     for (long int i = last_row_event; i < IT->GetEntries(); ++i) {
         IT->GetEntry(i);
+        
         if (static_cast<long int>(id_event)!=id_event_value) {
             last_row_event = i;
             break;
         }
+        phi+=M_PI;
         if(static_cast<int>(type)==1){
             type = SIG;
             pclass = (int) cluster_pclass;
             N_part=1;
+            phi+=2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
         }
         else type = BGR;
 
-        phi+=M_PI;
+        if(phi>=2.*M_PI) phi-= 2.*M_PI;
         
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
@@ -1046,19 +1095,19 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
     OT->SetBranchAddress("cluster_type", &type);
 
     for (long int i = last_row_event_OT; i < OT->GetEntries(); ++i) {
-        OT->GetEntry(i);
+        OT->GetEntry(i);   
         if (static_cast<long int>(id_event)!=id_event_value) {
             last_row_event_OT = i;
             break;
         }
+        phi += M_PI;
         if(static_cast<int>(type)==1){
+            phi+=2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
             type = SIG;
         }
         else type=BGR;
         
-        //phi += M_PI;
         //cout << 1.*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT)) << endl;
-        phi+=M_PI+2.*M_PI*((int)(ievent/(NROOT))) * 1./ ((int)(N_events/NROOT) + 1 );
         if(phi>=2.*M_PI) phi-= 2.*M_PI;
         hit_pos.emplace_back(r,z, phi, static_cast<int>(type));
     }
@@ -1067,7 +1116,7 @@ void ReadFromProcessed(TTree* IT, TTree* OT, long int id_event_value){
 // -----------------------------------------------------------------------------------------------------------------------------------------
 // Main routine
 // ------------
-void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullptr,  bool batch=false, double CF = 1., 
+void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullptr, bool batch=false, double CFI0=1, double CFI1 = 1, double CF01 = 1,
                    double Thresh0=15, double Thresh1=10, double _MaxFactor = 0.2, double a=0.25, double l1if=1., double k=1., double k1=2., double k2=4., 
                    double IEPC=2.5, double ipspdf=1.0, double _MaxDelay = 0.1e-9, double _tau_m = 1e-09, double _tau_s = 0.25e-09, 
                    double _tau_plus = 1.68e-09, double _tau_minus = 3.37e-09, double _a_plus = 0.03125, double _a_minus = 0.03125, 
@@ -1139,7 +1188,9 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     N_epochs          = N_ep;
     N_neuronsL[0]     = NL0;
     N_neuronsL[1]     = NL1;
-    ConnectedFraction = CF;
+    ConnectedFraction_Input_L0  = CFI0;
+    ConnectedFraction_Input_L1  = CFI1;
+    ConnectedFraction_L0_L1     = CF01;
     Threshold[0]      = Thresh0;
     Threshold[1]      = Thresh1;
     alpha             = a;
@@ -1190,7 +1241,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     }
     if (N_ev/N_ep<10000) {
         cout << "  Too few events per epoch. Set to " << 10000*N_ep << endl;
-        N_ev = 10000*N_ep;
+        //N_ev = 10000*N_ep;
     }
     if (N_ep<1) {
         cout << "  Invalid N_epochs = " << N_ep << ". Set to 1." << endl;
@@ -1223,7 +1274,9 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     cout << "         -----------------------------------" << endl;
     cout << "                       L0 neurons: " << NL0 << endl;
     cout << "                       L1 neurons: " << NL1 << endl;
-    cout << "            Connected L0-L1 frac.: " << CF << endl;
+    cout << "            Connected L0-L1 frac.: " << CF01 << endl;
+    cout << "            Connected IN-L0 frac.: " << CFI0 << endl;
+    cout << "            Connected IN-L1 frac.: " << CFI1 << endl;
     cout << "                  Noise per layer: " << Occ*N_strips << endl;
     cout << "                    Track classes: " << N_cl << endl;
     cout << "                     Total events: " << N_ev << endl;
@@ -1260,22 +1313,22 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
 
     // Histograms definition
     // ---------------------
-    TH1D * SelectivityL0 = new TH1D ("SelectivityL0", "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * SelectivityL1 = new TH1D ("SelectivityL1", "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * Qvalue        = new TH1D ("Qvalue",        "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * Qmax          = new TH1D ("Qmax",          "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HEff          = new TH1D ("HEff",          "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HAcc          = new TH1D ("HAcc",          "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HT0           = new TH1D ("HT0",           "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HT1           = new TH1D ("HT1",           "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HA            = new TH1D ("HA",            "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HL1IF         = new TH1D ("HL1IF",         "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HK            = new TH1D ("HK",            "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HK1           = new TH1D ("HK1",           "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HK2           = new TH1D ("HK2",           "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HIEPC         = new TH1D ("HIEPC",         "", N_epochs, 0.5, 0.5+N_epochs);
-    TH1D * HIPSPdf       = new TH1D ("HIPSPdf",       "", N_epochs, 0.5, 0.5+N_epochs);
-    TH2D * EffMap        = new TH2D ("EffMap",        "", N_neurons, -0.5, N_neurons-0.5, N_classes, -0.5, N_classes-0.5);
+    TH1F * SelectivityL0 = new TH1F ("SelectivityL0", "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * SelectivityL1 = new TH1F ("SelectivityL1", "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * Qvalue        = new TH1F ("Qvalue",        "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * Qmax          = new TH1F ("Qmax",          "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HEff          = new TH1F ("HEff",          "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HAcc          = new TH1F ("HAcc",          "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HT0           = new TH1F ("HT0",           "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HT1           = new TH1F ("HT1",           "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HA            = new TH1F ("HA",            "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HL1IF         = new TH1F ("HL1IF",         "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HK            = new TH1F ("HK",            "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HK1           = new TH1F ("HK1",           "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HK2           = new TH1F ("HK2",           "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HIEPC         = new TH1F ("HIEPC",         "", N_epochs, 0.5, 0.5+N_epochs);
+    TH1F * HIPSPdf       = new TH1F ("HIPSPdf",       "", N_epochs, 0.5, 0.5+N_epochs);
+    TH2F * EffMap        = new TH2F ("EffMap",        "", N_neurons, -0.5, N_neurons-0.5, N_classes, -0.5, N_classes-0.5);
     SelectivityL1->SetLineColor(kBlack);
     Qmax->SetLineColor(2);
     HEff->SetMaximum(1.1);
@@ -1295,74 +1348,74 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     HIEPC->SetMinimum(0.);
     HIPSPdf->SetMinimum(0.);
     HL1IF->SetMinimum(0.);
-    TH1D * HDelays = new TH1D ("HDelays", "", 50, 0., MaxDelay);
-    TH2D * HVoidWs = new TH2D ("HVoidWs", "", N_neurons, -0.5, -0.5+N_neurons, N_streams, -0.5, -0.5+N_streams);
-    TH2D * Q_12 = new TH2D ("Q_12","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * Q_34 = new TH2D ("Q_34","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * Q_56 = new TH2D ("Q_56","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * Q_78 = new TH2D ("Q_78","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * Q_93 = new TH2D ("Q_93","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * Q_MV = new TH2D ("Q_MV","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_12 = new TH2D ("N_12","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_34 = new TH2D ("N_34","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_56 = new TH2D ("N_56","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_78 = new TH2D ("N_78","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_93 = new TH2D ("N_93","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
-    TH2D * N_MV = new TH2D ("N_MV","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH1F * HDelays = new TH1F ("HDelays", "", 50, 0., MaxDelay);
+    TH2F * HVoidWs = new TH2F ("HVoidWs", "", N_neurons, -0.5, -0.5+N_neurons, N_streams, -0.5, -0.5+N_streams);
+    TH2F * Q_12 = new TH2F ("Q_12","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * Q_34 = new TH2F ("Q_34","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * Q_56 = new TH2F ("Q_56","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * Q_78 = new TH2F ("Q_78","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * Q_93 = new TH2F ("Q_93","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * Q_MV = new TH2F ("Q_MV","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_12 = new TH2F ("N_12","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_34 = new TH2F ("N_34","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_56 = new TH2F ("N_56","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_78 = new TH2F ("N_78","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_93 = new TH2F ("N_93","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
+    TH2F * N_MV = new TH2F ("N_MV","", 20, -MaxFactor, MaxFactor, 20, -MaxFactor, MaxFactor);
 
     int N_bins = 100;
-    TH2D * Latency[MaxNeurons*MaxClasses];
+    TH2F * Latency[MaxNeurons*MaxClasses];
     char name[50];
     for (int i=0; i<N_neurons*N_classes; i++) {
         sprintf (name,"Latency%d", i);
-        Latency[i] = new TH2D (name, name, N_bins, 0., (double)NevPerEpoch, max_angle+Empty_buffer, 0., (max_angle+Empty_buffer)/omega);
+        Latency[i] = new TH2F (name, name, N_bins, 0., (double)NevPerEpoch, max_angle+Empty_buffer, 0., (max_angle+Empty_buffer)/omega);
     }
-    TH1D * HWeight[MaxNeurons*MaxStreams];
-    TH1D * Efficiency[MaxNeurons*MaxClasses];
-    TH1D * FakeRate[MaxNeurons];
-    TH1D * Eff_totL0[MaxClasses];
-    TH1D * Eff_totL1[MaxClasses];
-    TH2D * StreamsS[10];
-    TH2D * StreamsB[10];
-    TH2D * StreamsN[10];
-    TH1D * BestEff[MaxNeurons];
-    TH1D * BestFR[MaxNeurons];
-    TH1D * BestEtot[MaxNeurons];
+    TH1F * HWeight[MaxNeurons*MaxStreams];
+    TH1F * Efficiency[MaxNeurons*MaxClasses];
+    TH1F * FakeRate[MaxNeurons];
+    TH1F * Eff_totL0[MaxClasses];
+    TH1F * Eff_totL1[MaxClasses];
+    TH2F * StreamsS[10];
+    TH2F * StreamsB[10];
+    TH2F * StreamsN[10];
+    TH1F * BestEff[MaxNeurons];
+    TH1F * BestFR[MaxNeurons];
+    TH1F * BestEtot[MaxNeurons];
 
     for (int i=0; i<N_neurons*N_streams; i++) {
         sprintf (name,"HWeight%d", i);
-        HWeight[i] = new TH1D (name, name, N_bins, 0., (double)NevPerEpoch);
+        HWeight[i] = new TH1F (name, name, N_bins, 0., (double)NevPerEpoch);
     }
     for (int i=0; i<N_neurons*N_classes; i++) {
         sprintf (name,"Efficiency%d", i);
-        Efficiency[i] = new TH1D (name, name, N_epochs, 0.5, 0.5+N_epochs);
+        Efficiency[i] = new TH1F (name, name, N_epochs, 0.5, 0.5+N_epochs);
     }
     for (int in=0; in<N_neurons; in++) {
         sprintf (name,"FakeRate%d", in);
-        FakeRate[in]  = new TH1D (name, name, N_epochs, 0.5, 0.5+N_epochs);
+        FakeRate[in]  = new TH1F (name, name, N_epochs, 0.5, 0.5+N_epochs);
     }
     for (int in=0; in<N_neurons; in++) {
         sprintf (name, "BestEff%d", in);
-        BestEff[in] = new TH1D (name, name, N_classes, -0.5, -0.5+N_classes);
+        BestEff[in] = new TH1F (name, name, N_classes, -0.5, -0.5+N_classes);
         sprintf (name, "BestFR%d", in);
-        BestFR[in]  = new TH1D (name, name, N_classes, -0.5, -0.5+N_classes);
+        BestFR[in]  = new TH1F (name, name, N_classes, -0.5, -0.5+N_classes);
         sprintf (name, "BestEtot%d", in);
-        BestEtot[in]  = new TH1D (name, name, N_classes, -0.5, -0.5+N_classes);
+        BestEtot[in]  = new TH1F (name, name, N_classes, -0.5, -0.5+N_classes);
     }
     for (int ic=0; ic<N_classes; ic++) {
         sprintf (name,"Eff_totL0%d", ic);
-        Eff_totL0[ic] = new TH1D (name, name, N_epochs, 0.5, 0.5+N_epochs);
+        Eff_totL0[ic] = new TH1F (name, name, N_epochs, 0.5, 0.5+N_epochs);
         sprintf (name,"Eff_totL1%d", ic);
-        Eff_totL1[ic] = new TH1D (name, name, N_epochs, 0.5, 0.5+N_epochs);
+        Eff_totL1[ic] = new TH1F (name, name, N_epochs, 0.5, 0.5+N_epochs);
     }
 
     for (int i=0; i<10; i++) {
         sprintf (name, "StreamsS%d", i);
-        StreamsS[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
+        StreamsS[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
         sprintf (name, "StreamsB%d", i);
-        StreamsB[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
+        StreamsB[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
         sprintf (name, "StreamsN%d", i);
-        StreamsN[i] = new TH2D (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
+        StreamsN[i] = new TH2F (name, name, (max_angle+Empty_buffer)*500, 0., (max_angle+Empty_buffer)*50./omega, N_InputStreams+N_neurons, 0.5, N_InputStreams+N_neurons+0.5);
     }
 
     // Calculation of constant in excitation spike, to make it max at 1
@@ -2495,8 +2548,18 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
 
     } while (ievent<N_events);
 
+    //closing the input file
+    delete IT;
+    delete OT;
+    delete dirIT;
+    delete dirOT;
+
+    file->Close();
+    delete file;
+
     // Draw histograms
     // ---------------
+    cout << "Drawing histos" << endl;
     TCanvas * S = new TCanvas ("S","",1000,1000);
     S->Divide(2,5);
     for (int i=0; i<10; i++) {
@@ -2632,7 +2695,10 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     cout << "         -----------------------------------" << endl;
     cout << "                       L0 neurons: " << NL0 << endl;
     cout << "                       L1 neurons: " << NL1 << endl;
-    cout << "            Connected L0-L1 frac.: " << CF << endl;
+    cout << "            Connected L0-L1 frac.: " << CF01 << endl;
+    cout << "            Connected IN-L0 frac.: " << CFI0 << endl;
+    cout << "            Connected IN-L1 frac.: " << CFI1 << endl;
+   
     cout << "                  Noise per layer: " << Occupancy*N_strips << endl;
     cout << "                    Track classes: " << N_cl << endl;
     cout << "                Only 8-hit tracks: ";
@@ -2680,6 +2746,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     rootfile->cd();
 
     // Write canvases first
+    cout << "Writing canvas" << endl;
     S->Write();
     C->Write();
     E0->Write();
@@ -2689,6 +2756,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     W->Write();
     Y->Write();
 
+    cout << "Saving pdf" << endl;
     S->SaveAs("./pdf/S.pdf" , "pdf");
     C->SaveAs("./pdf/C.pdf" , "pdf");
     E0->SaveAs("./pdf/E0.pdf", "pdf");
@@ -2754,7 +2822,7 @@ void SNN_Tracking (int N_ev, int N_ep, int NL0, int NL1, char* rootInput = nullp
     rootfile->Write();
 
     // End of program
-    file->Close();
+    rootfile->Close();
     gROOT->Time();
 
     return;
