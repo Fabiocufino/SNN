@@ -498,7 +498,7 @@ int GetITL(float r_hit){
     if (r_hit < 0) r_hit = 0;
     if (r_hit > max_R) r_hit = max_R-epsilon;
 
-    return (int)(r_hit / r_strip); 
+    return (int)(r_hit / r_bin_length); 
     
     /*
         for (int i = 0; i < N_TrackingLayers; i++){

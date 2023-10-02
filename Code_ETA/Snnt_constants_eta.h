@@ -96,6 +96,6 @@ ofstream fout_h_sig("h_sig.txt");
 static double eta_range = 4;
 static double eta_strip = eta_range / N_EtaLayers;
 static double max_R = 1200.;
-static double r_strip = max_R/N_TrackingLayers;
+static double r_bin_length = max_R/N_TrackingLayers;
 
 #endif // SNNT_CONSTANTS_H

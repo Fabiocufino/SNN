@@ -20,6 +20,8 @@
         "iosfwd": "cpp",
         "string": "cpp",
         "filesystem": "cpp",
-        "stdexcept": "cpp"
+        "stdexcept": "cpp",
+        "plotTwoGraphs.C": "cpp",
+        "draw_gif_events.C": "cpp"
     }
 }
